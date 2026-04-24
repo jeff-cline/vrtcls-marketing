@@ -1,0 +1,31 @@
+<h1 class="fw-bold mb-3">Campaigns</h1>
+
+<table class="table table-hover bg-white align-middle">
+  <thead>
+    <tr>
+      <th>Campaign</th>
+      <th>Template</th>
+      <th>Status</th>
+      <th class="text-end">Sent</th>
+      <th class="text-end">Opened</th>
+      <th class="text-end">Clicks</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% campaigns.forEach(function(c) { %>
+      <tr>
+        <td class="fw-bold"><%= c.name %></td>
+        <td class="text-muted"><%= c.template_name %></td>
+        <td><span class="badge bg-secondary"><%= c.status %></span></td>
+        <td class="text-end"><%= c.sent %>/<%= c.total %></td>
+        <td class="text-end"><%= c.opened %></td>
+        <td class="text-end fw-bold"><%= c.clicks %></td>
+        <td class="text-end"><a href="/app/campaigns/<%= c.id %>" class="btn btn-sm btn-outline-dark">Open</a></td>
+      </tr>
+    <% }) %>
+    <% if (!campaigns.length) { %>
+      <tr><td colspan="7" class="text-muted text-center py-4">No campaigns yet.</td></tr>
+    <% } %>
+  </tbody>
+</table>

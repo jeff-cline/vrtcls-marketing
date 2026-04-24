@@ -1,0 +1,27 @@
+<h1 class="fw-bold mb-3">Users</h1>
+
+<table class="table table-hover bg-white align-middle">
+  <thead>
+    <tr>
+      <th>Email</th><th>Role</th><th>Credits</th><th>Tokens</th><th>Joined</th><th>Grant credits</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% users.forEach(function(u) { %>
+      <tr>
+        <td class="fw-bold"><%= u.email %></td>
+        <td><span class="badge bg-<%= u.role === 'admin' ? 'warning text-dark' : 'secondary' %>"><%= u.role %></span></td>
+        <td>$<%= (u.credits_cents/100).toFixed(2) %></td>
+        <td><%= u.email_tokens %></td>
+        <td class="text-muted small"><%= new Date(u.created_at).toLocaleDateString() %></td>
+        <td>
+          <form method="post" action="/admin/users/<%= u.id %>/credits" class="d-flex gap-1 m-0">
+            <input name="amount" type="number" step="0.01" class="form-control form-control-sm" style="width:90px;" placeholder="$ amount">
+            <input name="reason" class="form-control form-control-sm" style="width:160px;" placeholder="reason">
+            <button class="btn btn-sm btn-warning fw-bold">Grant</button>
+          </form>
+        </td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table>

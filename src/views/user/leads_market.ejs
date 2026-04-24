@@ -1,0 +1,38 @@
+<h1 class="fw-bold mb-3">Lead marketplace</h1>
+<p class="text-secondary">Price tiers are based on how fresh the intent signal is. Every purchase includes 5 send tokens.</p>
+
+<% if (!leads.length) { %>
+  <div class="alert alert-info">No leads in the pool yet. Admin needs to import from the MCP.</div>
+<% } %>
+
+<table class="table table-hover bg-white align-middle">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>City / State</th>
+      <th>Age</th>
+      <th>Tier</th>
+      <th class="text-end">Price</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% leads.forEach(function(x) { %>
+      <tr>
+        <td><%= x.lead.first_name || '' %> <%= x.lead.last_name || '' %></td>
+        <td><%= x.lead.address?.city || '' %> <%= x.lead.address?.state || '' %></td>
+        <td class="text-muted small"><%= x.tier.ageDays.toFixed(1) %>d</td>
+        <td><span class="badge bg-secondary"><%= x.tier.label %></span></td>
+        <td class="text-end fw-bold">$<%= (x.tier.priceCents/100).toFixed(2) %></td>
+        <td class="text-end">
+          <form method="post" action="/app/leads/<%= x.lead.id %>/buy" class="d-inline m-0">
+            <button class="btn btn-sm btn-warning fw-bold"
+              <% if (user.credits_cents < x.tier.priceCents) { %>disabled<% } %>>
+              Buy
+            </button>
+          </form>
+        </td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table>

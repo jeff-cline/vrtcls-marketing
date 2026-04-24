@@ -1,0 +1,46 @@
+<h1 class="fw-bold mb-3">Import lead pull</h1>
+
+<p class="text-secondary">Paste the raw JSON output from a HighIntentTargets <code>find_persons</code> call (or a generated CSV/JSON export). Leads are upserted by <code>person_id</code>; existing leads get their tags appended.</p>
+
+<form method="post" action="/admin/import" class="bg-white p-4 border rounded">
+  <div class="row g-3">
+    <div class="col-md-6">
+      <label class="form-label">Keyword tag</label>
+      <input name="tag" class="form-control" placeholder="term_life, stem_cells, etc.">
+      <div class="form-text">This tag is written to every lead in the import.</div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Workflow ID (optional)</label>
+      <input name="workflow_id" class="form-control">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Tool trace ID (optional)</label>
+      <input name="tool_trace_id" class="form-control">
+    </div>
+  </div>
+  <div class="mt-3">
+    <label class="form-label">Persons JSON</label>
+    <textarea name="persons" class="form-control font-monospace" rows="16" placeholder='[{"person_id":"abc","email":"a@b.com","first_name":"Sam",...}]'></textarea>
+    <div class="form-text">Expected: a JSON array on <code>persons</code> — or wrap your payload as <code>{"persons": [...]}</code>.</div>
+  </div>
+  <div class="mt-3">
+    <button class="btn btn-warning fw-bold">Import</button>
+  </div>
+</form>
+
+<% if (result) { %>
+  <div class="alert alert-success mt-4">
+    Imported audience #<%= result.audienceId %> — <%= result.inserted %> new, <%= result.updated %> updated (<%= result.total %> total).
+  </div>
+<% } %>
+
+<script>
+// Accept either a bare array in the textarea or {persons:[...]} — coerce client-side.
+document.querySelector('form').addEventListener('submit', function(e){
+  var t = this.persons;
+  try {
+    var v = JSON.parse(t.value);
+    if (Array.isArray(v)) t.value = JSON.stringify({persons: v});
+  } catch(_) {}
+});
+</script>

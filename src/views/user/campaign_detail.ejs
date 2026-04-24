@@ -1,0 +1,16 @@
+<h1 class="fw-bold mb-1"><%= campaign.name %></h1>
+<div class="text-muted mb-4"><%= campaign.template_name %> · <%= campaign.status %></div>
+
+<table class="table table-hover bg-white align-middle">
+  <thead><tr><th>Recipient</th><th>Status</th><th>Opened</th><th class="text-end">Clicks</th></tr></thead>
+  <tbody>
+    <% sends.forEach(function(s) { %>
+      <tr>
+        <td><%= s.first_name || '' %> <%= s.last_name || '' %><div class="text-muted small"><%= s.email %></div></td>
+        <td><span class="badge bg-<%= s.status === 'sent' ? 'success' : (s.status === 'failed' ? 'danger' : 'secondary') %>"><%= s.status %></span></td>
+        <td><%= s.opened_at ? '✓' : '' %></td>
+        <td class="text-end fw-bold"><%= s.click_count %></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table>

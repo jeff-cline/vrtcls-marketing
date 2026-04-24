@@ -1,0 +1,21 @@
+<h1 class="fw-bold mb-3">My leads</h1>
+
+<table class="table table-hover bg-white align-middle">
+  <thead>
+    <tr><th>Name</th><th>Email</th><th>City</th><th>Paid</th><th>Bought</th></tr>
+  </thead>
+  <tbody>
+    <% purchases.forEach(function(p) { %>
+      <tr>
+        <td><%= p.first_name || '' %> <%= p.last_name || '' %></td>
+        <td><%= p.email || '' %></td>
+        <td><%= p.address?.city || '' %>, <%= p.address?.state || '' %></td>
+        <td>$<%= (p.price_cents/100).toFixed(2) %></td>
+        <td class="text-muted small"><%= new Date(p.created_at).toLocaleString() %></td>
+      </tr>
+    <% }) %>
+    <% if (!purchases.length) { %>
+      <tr><td colspan="5" class="text-muted text-center py-4">No leads purchased yet. <a href="/app/leads">Browse the market →</a></td></tr>
+    <% } %>
+  </tbody>
+</table>

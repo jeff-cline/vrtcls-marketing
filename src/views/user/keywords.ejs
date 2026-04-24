@@ -1,0 +1,30 @@
+<h1 class="fw-bold mb-3">Keywords</h1>
+<p class="text-secondary">Tell us what intent you're after. We match it to active buyers.</p>
+
+<form method="post" action="/app/keywords" class="row g-2 mb-4">
+  <div class="col-md-3">
+    <input name="label" class="form-control" placeholder="Short label (e.g. 'stem cells')" required maxlength="200">
+  </div>
+  <div class="col-md-7">
+    <input name="prompt" class="form-control" placeholder="People searching for stem cell therapy options" required maxlength="1000">
+  </div>
+  <div class="col-md-2">
+    <button class="btn btn-warning fw-bold w-100">Save</button>
+  </div>
+</form>
+
+<table class="table table-hover bg-white">
+  <thead><tr><th>Label</th><th>Prompt</th><th>Saved</th></tr></thead>
+  <tbody>
+    <% keywords.forEach(function(k) { %>
+      <tr>
+        <td class="fw-bold"><%= k.label %></td>
+        <td><%= k.prompt %></td>
+        <td class="text-muted small"><%= new Date(k.created_at).toLocaleString() %></td>
+      </tr>
+    <% }) %>
+    <% if (!keywords.length) { %>
+      <tr><td colspan="3" class="text-muted text-center py-4">No keywords yet.</td></tr>
+    <% } %>
+  </tbody>
+</table>

@@ -1,0 +1,16 @@
+<h1 class="fw-bold mb-4">Admin</h1>
+
+<div class="row g-3">
+  <div class="col"><div class="p-3 border rounded bg-white"><div class="text-muted small">Users</div><div class="display-6 fw-bold"><%= stats.users %></div></div></div>
+  <div class="col"><div class="p-3 border rounded bg-white"><div class="text-muted small">Leads in pool</div><div class="display-6 fw-bold"><%= stats.leads %></div></div></div>
+  <div class="col"><div class="p-3 border rounded bg-white"><div class="text-muted small">Purchases</div><div class="display-6 fw-bold"><%= stats.purchases %></div></div></div>
+  <div class="col"><div class="p-3 border rounded bg-white"><div class="text-muted small">Emails sent</div><div class="display-6 fw-bold"><%= stats.sends %></div></div></div>
+  <div class="col"><div class="p-3 border rounded bg-white"><div class="text-muted small">Clicks</div><div class="display-6 fw-bold"><%= stats.clicks %></div></div></div>
+</div>
+
+<div class="mt-5">
+  <h3 class="h5 fw-bold">Quick links</h3>
+  <a href="/admin/users" class="btn btn-outline-dark me-2">Users &amp; credits</a>
+  <a href="/admin/import" class="btn btn-outline-dark me-2">Import lead pull</a>
+  <a href="/admin/templates" class="btn btn-outline-dark me-2">Edit templates</a>
+</div>

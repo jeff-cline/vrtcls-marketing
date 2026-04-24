@@ -1,0 +1,63 @@
+<h1 class="fw-bold mb-4">Welcome back.</h1>
+
+<div class="row g-3">
+  <div class="col-md-3">
+    <div class="p-3 border rounded bg-white">
+      <div class="text-muted small">Balance</div>
+      <div class="display-6 fw-bold text-success">$<%= (user.credits_cents/100).toFixed(2) %></div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="p-3 border rounded bg-white">
+      <div class="text-muted small">Send tokens</div>
+      <div class="display-6 fw-bold text-info"><%= user.email_tokens %></div>
+    </div>
+  </div>
+  <div class="col-md-2">
+    <div class="p-3 border rounded bg-white">
+      <div class="text-muted small">Leads owned</div>
+      <div class="display-6 fw-bold"><%= stats.purchases %></div>
+    </div>
+  </div>
+  <div class="col-md-2">
+    <div class="p-3 border rounded bg-white">
+      <div class="text-muted small">Emails sent</div>
+      <div class="display-6 fw-bold"><%= stats.sends %></div>
+    </div>
+  </div>
+  <div class="col-md-2">
+    <div class="p-3 border rounded bg-white">
+      <div class="text-muted small">Clicks</div>
+      <div class="display-6 fw-bold"><%= stats.clicks %></div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mt-4">
+  <div class="col-md-6">
+    <div class="p-4 border rounded bg-white h-100">
+      <h3 class="h5 fw-bold">Next step</h3>
+      <ol class="mb-3">
+        <li>Browse the <a href="/app/leads">lead marketplace</a></li>
+        <li>Buy a fresh lead ($5) → 5 send tokens included</li>
+        <li><a href="/app/compose">Compose</a> an email from a template</li>
+        <li>Watch clicks roll in on <a href="/app/campaigns">Campaigns</a></li>
+      </ol>
+      <a href="/app/leads" class="btn btn-warning fw-bold">Browse leads →</a>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="p-4 border rounded bg-white h-100">
+      <h3 class="h5 fw-bold">How pricing works</h3>
+      <ul class="list-unstyled mb-0">
+        <% tiers.forEach(function(t) { %>
+          <li class="d-flex justify-content-between py-1 border-bottom">
+            <span><%= t.label %></span>
+            <span class="fw-bold">$<%= (t.priceCents/100).toFixed(2) %></span>
+          </li>
+        <% }) %>
+      </ul>
+      <div class="text-muted small mt-2">+ <%= tokensPerLead %> send tokens per lead purchased</div>
+    </div>
+  </div>
+</div>

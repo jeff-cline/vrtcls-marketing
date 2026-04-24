@@ -1,0 +1,52 @@
+<h1 class="fw-bold mb-3">Compose</h1>
+<p class="text-secondary">Pick a template, pick your leads, fire. One token per send.</p>
+
+<form method="post" action="/app/send" class="bg-white p-4 border rounded">
+  <div class="row g-3">
+    <div class="col-md-6">
+      <label class="form-label fw-bold">Campaign name</label>
+      <input name="campaign_name" class="form-control" required placeholder="Dallas · term life · week 1" maxlength="200">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label fw-bold">Template</label>
+      <select name="template_id" class="form-select" required>
+        <% templates.forEach(function(t) { %>
+          <option value="<%= t.id %>"><%= t.name %> — "<%= t.subject %>"</option>
+        <% }) %>
+      </select>
+    </div>
+  </div>
+
+  <div class="mt-4">
+    <div class="d-flex justify-content-between align-items-center">
+      <label class="form-label fw-bold mb-0">Leads to send to</label>
+      <div>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('input[name=lead_ids]').forEach(c => c.checked = true)">Select all</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('input[name=lead_ids]').forEach(c => c.checked = false)">Clear</button>
+      </div>
+    </div>
+    <div class="border rounded mt-2" style="max-height:400px;overflow:auto;">
+      <table class="table table-sm mb-0">
+        <thead class="table-light sticky-top"><tr><th></th><th>Name</th><th>Email</th><th>City</th></tr></thead>
+        <tbody>
+          <% leads.forEach(function(l) { %>
+            <tr>
+              <td><input type="checkbox" name="lead_ids" value="<%= l.id %>"></td>
+              <td><%= l.first_name || '' %> <%= l.last_name || '' %></td>
+              <td><%= l.email %></td>
+              <td><%= l.address?.city || '' %>, <%= l.address?.state || '' %></td>
+            </tr>
+          <% }) %>
+          <% if (!leads.length) { %>
+            <tr><td colspan="4" class="text-muted text-center py-4">Buy some leads first.</td></tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="mt-4 d-flex justify-content-between align-items-center">
+    <div class="text-muted small">You have <strong><%= user.email_tokens %></strong> send tokens.</div>
+    <button class="btn btn-warning fw-bold">Send</button>
+  </div>
+</form>
