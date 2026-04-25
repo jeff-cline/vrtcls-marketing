@@ -210,9 +210,49 @@ export default async function adminRoutes(app) {
       for (const p of persons) {
         const personId = p.person_id || p.id;
         if (!personId) continue;
-        const email = p.email || (Array.isArray(p.emails) ? p.emails[0] : null);
+        const ids = p.identifiers || {};
+        const emails = Array.isArray(ids.emails) ? ids.emails : (Array.isArray(p.emails) ? p.emails : []);
+        const phones = Array.isArray(ids.phones) ? ids.phones : (Array.isArray(p.phones) ? p.phones : []);
+        const names = Array.isArray(ids.names) ? ids.names : [];
+        const addresses = Array.isArray(ids.addresses) ? ids.addresses : [];
+
+        const pickEmail = () => {
+          if (typeof p.email === 'string') return p.email;
+          const optedIn = emails.find((e) => e && e.opted_in === true && e.email_address);
+          if (optedIn) return optedIn.email_address;
+          const any = emails.find((e) => e && e.email_address);
+          if (any) return any.email_address;
+          const flat = emails.find((e) => typeof e === 'string');
+          return flat || null;
+        };
+        const pickPhone = () => {
+          if (typeof p.phone === 'string') return p.phone;
+          const cell = phones.find((ph) => ph && ph.phone_type === 'cell' && ph.do_not_call === false && ph.phone_number);
+          if (cell) return cell.phone_number;
+          const ok = phones.find((ph) => ph && ph.do_not_call === false && ph.phone_number);
+          if (ok) return ok.phone_number;
+          const any = phones.find((ph) => ph && ph.phone_number);
+          if (any) return any.phone_number;
+          return null;
+        };
+        const email = pickEmail();
+        const phone = pickPhone();
+        const firstName = p.first_name || (names[0] && names[0].first_name) || null;
+        const lastName = p.last_name || (names[0] && names[0].last_name) || null;
+        const address = p.address || (addresses[0] ? {
+          line1: addresses[0].address_primary || null,
+          line2: addresses[0].address_secondary || null,
+          city: addresses[0].city || null,
+          state: addresses[0].state || null,
+          zip: addresses[0].zip || null,
+          county: addresses[0].county || null,
+          lat: addresses[0].latitude || null,
+          lng: addresses[0].longitude || null
+        } : null);
+        const dnc = p.dnc === true || (phones.length > 0 && phones.every((ph) => ph && ph.do_not_call === true) && emails.every((e) => !e || e.opted_in === false));
+
         const { rows: existing } = await client.query(
-          'SELECT id FROM leads WHERE person_id = $1', [personId]
+          'SELECT id FROM leads WHERE person_id = $1', [String(personId)]
         );
         let leadId;
         if (existing[0]) {
@@ -221,15 +261,15 @@ export default async function adminRoutes(app) {
             `UPDATE leads SET email=COALESCE($2,email), phone=COALESCE($3,phone),
               first_name=COALESCE($4,first_name), last_name=COALESCE($5,last_name),
               address=COALESCE($6,address), last_seen=NOW() WHERE id=$1`,
-            [leadId, email, p.phone || null, p.first_name || null, p.last_name || null,
-             p.address ? JSON.stringify(p.address) : null]
+            [leadId, email, phone, firstName, lastName,
+             address ? JSON.stringify(address) : null]
           );
         } else {
           const { rows: ins } = await client.query(
             `INSERT INTO leads (person_id, email, phone, first_name, last_name, address, dnc)
              VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-            [personId, email, p.phone || null, p.first_name || null, p.last_name || null,
-             p.address ? JSON.stringify(p.address) : null, !!p.dnc]
+            [String(personId), email, phone, firstName, lastName,
+             address ? JSON.stringify(address) : null, dnc]
           );
           leadId = ins[0].id;
           inserted++;
