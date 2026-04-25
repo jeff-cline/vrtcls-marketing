@@ -66,12 +66,27 @@ git clone git@github.com:jeff-cline/vrtcls-marketing.git app
 cd app
 npm ci
 cp .env.example .env
-nano .env   # fill in SESSION_SECRET, DATABASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD, RESEND_API_KEY, BASE_URL=https://vrtcls.marketing
+nano .env   # fill in SESSION_SECRET, DATABASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD,
+            # RESEND_API_KEY, BASE_URL=https://vrtcls.marketing,
+            # WATTDATA_API_KEY=watt_...   (from https://wattdata.ai/dashboard/api-keys)
 npm run migrate
 npm run seed
-pm2 start src/server.js --name vrtcls
+
+# Start BOTH the web server AND the auto-bake worker
+pm2 start ecosystem.config.cjs
 pm2 startup systemd   # follow the output instructions
 pm2 save
+```
+
+The worker (`vrtcls-worker`) polls every ~12s for HITT requests in `queued`
+or `baking` status, calls WattData over HTTP MCP, ingests the persons array,
+and flips the row to `complete`. No human intervention needed once
+`WATTDATA_API_KEY` is set.
+
+To redeploy after pulling new code:
+
+```bash
+cd /home/deploy/app && git pull && npm ci && npm run migrate && pm2 reload ecosystem.config.cjs
 ```
 
 ## 6. Nginx + HTTPS
@@ -117,15 +132,25 @@ Paste one real lead via `/admin/import`, buy it as a user, send a test. Check:
 - `mail-tester.com` score
 - Resend dashboard shows delivery
 
-## 9. First lead pull
+## 9. First lead pull (fully automated)
 
-In a Claude Code session with the HighIntentTargets MCP attached, run something like:
+A user submits a HITT from `/app` → row inserted with `status='baking'` →
+the `vrtcls-worker` process picks it up within ~12s, calls WattData via
+MCP-over-HTTP, and ingests the persons. The bake page polls
+`/app/hitt/:id/status` every 5s and auto-redirects to `/app/leads?hitt_id=N`
+when done.
 
-> Use `build_cluster_expression` for "people searching for term life insurance".
-> Use `find_persons` with that expression, location Dallas TX radius 25 miles, audience_limit 500, format=json, identifier_types=[email, phone, name, address].
-> Download the presigned URL, return the JSON.
+To watch the worker live:
 
-Save the JSON. Paste into `/admin/import` with a tag like `term_life`. Done — leads are live.
+```bash
+pm2 logs vrtcls-worker
+```
+
+If a HITT marks `failed`, check the `notes` column in `hitt_requests` —
+that's the error message from WattData / geocoding / etc.
+
+Manual fulfillment (admin paste-JSON at `/admin/hitt`) is still wired up
+as a fallback for HITTs that fail the auto path.
 
 ## Next hardening steps (post-launch)
 

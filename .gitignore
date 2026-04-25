@@ -11,3 +11,4 @@ coverage/
 *.swp
 tmp/
 uploads/
+.local/

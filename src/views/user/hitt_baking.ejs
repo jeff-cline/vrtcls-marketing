@@ -35,7 +35,7 @@
 </section>
 
 <section class="text-center text-muted small">
-  Average bake time: 10–30 minutes. Leave the tab open — we'll redirect you the moment your leads are ready.<br>
+  Most HITTs bake in 30–90 seconds. Leave the tab open — we'll redirect you the moment your leads are ready.<br>
   Status: <span id="bake-status" class="fw-bold text-warning"><%= hitt.status %></span>
 </section>
 
@@ -82,7 +82,7 @@ window.__HITT__ = {
 
   function updateBar() {
     const elapsed = (Date.now() - startedAt) / 1000;
-    const pct = Math.min(95, (elapsed / (60 * 18)) * 100);
+    const pct = Math.min(95, (elapsed / 90) * 100);
     document.querySelector('.bake-bar').style.width = pct + '%';
     document.querySelectorAll('.bake-step').forEach(function (el) {
       const m = Number(el.getAttribute('data-min'));
