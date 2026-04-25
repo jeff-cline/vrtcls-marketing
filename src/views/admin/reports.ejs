@@ -1,0 +1,84 @@
+<h1 class="fw-bold mb-3">Business reports</h1>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="p-3 border rounded bg-white">
+      <div class="text-muted small">Total revenue</div>
+      <div class="display-5 fw-bold text-success">$<%= (revenue.revenue_cents/100).toFixed(2) %></div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="p-3 border rounded bg-white">
+      <div class="text-muted small">Lead purchases</div>
+      <div class="display-5 fw-bold"><%= revenue.purchase_count %></div>
+    </div>
+  </div>
+  <div class="col-md-2">
+    <div class="p-3 border rounded bg-white">
+      <div class="text-muted small">Emails sent</div>
+      <div class="display-5 fw-bold"><%= delivery.sent %></div>
+    </div>
+  </div>
+  <div class="col-md-2">
+    <div class="p-3 border rounded bg-white">
+      <div class="text-muted small">Opens</div>
+      <div class="display-5 fw-bold"><%= delivery.opened %></div>
+    </div>
+  </div>
+  <div class="col-md-2">
+    <div class="p-3 border rounded bg-white">
+      <div class="text-muted small">Clicks</div>
+      <div class="display-5 fw-bold text-warning"><%= delivery.clicks %></div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="bg-white border rounded p-3">
+      <h3 class="h6 fw-bold">Revenue by tier</h3>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Tier (≤ days)</th><th class="text-end">Leads</th><th class="text-end">Revenue</th></tr></thead>
+        <tbody>
+          <% byTier.forEach(function(t) { %>
+            <tr>
+              <td><%= t.tier_days %></td>
+              <td class="text-end"><%= t.n %></td>
+              <td class="text-end fw-bold">$<%= (t.rev/100).toFixed(2) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="bg-white border rounded p-3">
+      <h3 class="h6 fw-bold">HITT pipeline</h3>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Status</th><th class="text-end">Count</th></tr></thead>
+        <tbody>
+          <% hittStats.forEach(function(s) { %>
+            <tr><td><%= s.status %></td><td class="text-end fw-bold"><%= s.n %></td></tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="bg-white border rounded p-3 mt-4">
+  <h3 class="h6 fw-bold">Last 30 days</h3>
+  <table class="table table-sm mb-0">
+    <thead><tr><th>Day</th><th class="text-end">Purchases</th><th class="text-end">Revenue</th></tr></thead>
+    <tbody>
+      <% dailyRev.forEach(function(d) { %>
+        <tr>
+          <td><%= new Date(d.day).toLocaleDateString() %></td>
+          <td class="text-end"><%= d.purchases %></td>
+          <td class="text-end fw-bold">$<%= (d.rev_cents/100).toFixed(2) %></td>
+        </tr>
+      <% }) %>
+      <% if (!dailyRev.length) { %><tr><td colspan="3" class="text-muted text-center py-3">No purchases in last 30 days.</td></tr><% } %>
+    </tbody>
+  </table>
+</div>

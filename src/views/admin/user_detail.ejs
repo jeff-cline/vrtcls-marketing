@@ -1,0 +1,67 @@
+<div class="d-flex align-items-center mb-3">
+  <a href="/admin/leaderboard" class="text-decoration-none">← Leaderboard</a>
+  <span class="mx-2 text-muted">/</span>
+  <span class="fw-bold"><%= target.email %></span>
+  <form method="post" action="/admin/users/<%= target.id %>/impersonate" class="ms-auto m-0">
+    <button class="btn btn-sm btn-warning fw-bold">Log in as this user</button>
+  </form>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3"><div class="p-3 border rounded bg-white"><div class="text-muted small">Balance</div><div class="display-6 fw-bold text-success">$<%= (target.credits_cents/100).toFixed(2) %></div></div></div>
+  <div class="col-md-3"><div class="p-3 border rounded bg-white"><div class="text-muted small">Tokens</div><div class="display-6 fw-bold"><%= target.email_tokens %></div></div></div>
+  <div class="col-md-3"><div class="p-3 border rounded bg-white"><div class="text-muted small">Role</div><div class="display-6 fw-bold"><%= target.role %></div></div></div>
+  <div class="col-md-3"><div class="p-3 border rounded bg-white"><div class="text-muted small">Joined</div><div class="fw-bold"><%= new Date(target.created_at).toLocaleString() %></div></div></div>
+</div>
+
+<form method="post" action="/admin/users/<%= target.id %>/credits" class="row g-2 align-items-end mb-4">
+  <div class="col-md-3">
+    <label class="form-label small">Grant credit ($)</label>
+    <input name="amount" type="number" step="0.01" class="form-control" placeholder="50.00">
+  </div>
+  <div class="col-md-5">
+    <label class="form-label small">Reason</label>
+    <input name="reason" class="form-control" placeholder="manual_grant">
+  </div>
+  <div class="col-md-2">
+    <button class="btn btn-warning fw-bold w-100">Grant</button>
+  </div>
+</form>
+
+<h3 class="h5 fw-bold mt-4">Purchased leads (<%= leads.length %>)</h3>
+<div class="bg-white border rounded mb-4" style="max-height:400px;overflow:auto;">
+  <table class="table table-sm align-middle mb-0">
+    <thead class="table-light sticky-top"><tr><th>Name</th><th>Email</th><th>City</th><th class="text-end">Paid</th><th>Bought</th></tr></thead>
+    <tbody>
+      <% leads.forEach(function(l) { %>
+        <tr>
+          <td><%= l.first_name || '' %> <%= l.last_name || '' %></td>
+          <td><%= l.lead_email %></td>
+          <td><%= l.address?.city || '' %>, <%= l.address?.state || '' %></td>
+          <td class="text-end fw-bold">$<%= (l.price_cents/100).toFixed(2) %></td>
+          <td class="text-muted small"><%= new Date(l.created_at).toLocaleString() %></td>
+        </tr>
+      <% }) %>
+      <% if (!leads.length) { %><tr><td colspan="5" class="text-muted text-center py-3">No leads.</td></tr><% } %>
+    </tbody>
+  </table>
+</div>
+
+<h3 class="h5 fw-bold">Campaigns (<%= campaigns.length %>)</h3>
+<div class="bg-white border rounded">
+  <table class="table table-sm align-middle mb-0">
+    <thead class="table-light"><tr><th>Campaign</th><th>Template</th><th>Status</th><th class="text-end">Sent</th><th class="text-end">Clicks</th></tr></thead>
+    <tbody>
+      <% campaigns.forEach(function(c) { %>
+        <tr>
+          <td class="fw-bold"><%= c.name %></td>
+          <td class="text-muted"><%= c.template_name %></td>
+          <td><span class="badge bg-secondary"><%= c.status %></span></td>
+          <td class="text-end"><%= c.sent %>/<%= c.total %></td>
+          <td class="text-end fw-bold"><%= c.clicks %></td>
+        </tr>
+      <% }) %>
+      <% if (!campaigns.length) { %><tr><td colspan="5" class="text-muted text-center py-3">No campaigns.</td></tr><% } %>
+    </tbody>
+  </table>
+</div>

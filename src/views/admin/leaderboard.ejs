@@ -1,0 +1,44 @@
+<h1 class="fw-bold mb-3">User leaderboard</h1>
+<p class="text-secondary">Sorted by lifetime spend. Click a row to drill in. Use "Log in as" to operate inside their account.</p>
+
+<table class="table table-hover bg-white align-middle">
+  <thead>
+    <tr>
+      <th>User</th>
+      <th class="text-end">Spent</th>
+      <th class="text-end">Leads</th>
+      <th class="text-end">HITTs</th>
+      <th class="text-end">Sent</th>
+      <th class="text-end">Clicks</th>
+      <th class="text-end">Balance</th>
+      <th class="text-end">Tokens</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% users.forEach(function(u) { %>
+      <tr>
+        <td>
+          <div class="fw-bold"><%= u.email %></div>
+          <div class="small text-muted">since <%= new Date(u.created_at).toLocaleDateString() %></div>
+        </td>
+        <td class="text-end fw-bold">$<%= (u.spent_cents/100).toFixed(2) %></td>
+        <td class="text-end"><%= u.leads_bought %></td>
+        <td class="text-end"><%= u.hitts %></td>
+        <td class="text-end"><%= u.emails_sent %></td>
+        <td class="text-end fw-bold"><%= u.clicks %></td>
+        <td class="text-end">$<%= (u.credits_cents/100).toFixed(2) %></td>
+        <td class="text-end"><%= u.email_tokens %></td>
+        <td class="text-end">
+          <a href="/admin/users/<%= u.id %>" class="btn btn-sm btn-outline-dark">Drill in</a>
+          <form method="post" action="/admin/users/<%= u.id %>/impersonate" class="d-inline m-0">
+            <button class="btn btn-sm btn-warning fw-bold">Log in as</button>
+          </form>
+        </td>
+      </tr>
+    <% }) %>
+    <% if (!users.length) { %>
+      <tr><td colspan="9" class="text-muted text-center py-4">No users yet.</td></tr>
+    <% } %>
+  </tbody>
+</table>

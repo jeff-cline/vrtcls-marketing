@@ -1,6 +1,6 @@
 import { query } from '../db.js';
 import { requireAuth } from '../auth.js';
-import { priceForAge, TIERS, TOKENS_PER_LEAD } from '../services/pricing.js';
+import { priceForAge, TIERS, TOKENS_PER_LEAD, MISSING_OPP_PER_LEAD_CENTS } from '../services/pricing.js';
 import { purchaseLead } from '../services/credits.js';
 import { sendOne } from '../services/email.js';
 
@@ -22,27 +22,88 @@ export default async function userRoutes(app) {
        WHERE s.user_id = $1`,
       [req.user.id]
     );
+    const { rows: recentHitts } = await query(
+      `SELECT h.id, h.label, h.prompt, h.status, h.result_count, h.created_at, u.email
+       FROM hitt_requests h
+       JOIN users u ON u.id = h.user_id
+       ORDER BY h.created_at DESC LIMIT 8`
+    );
+    const { rows: myHitts } = await query(
+      `SELECT id, label, status, result_count, created_at FROM hitt_requests
+       WHERE user_id = $1 ORDER BY created_at DESC LIMIT 5`,
+      [req.user.id]
+    );
     return reply.view('user/dashboard', {
       user: req.user,
       stats: { purchases: purchases[0].n, sends: sends[0].n, clicks: clicks[0].n },
       tiers: TIERS,
       tokensPerLead: TOKENS_PER_LEAD,
+      recentHitts,
+      myHitts,
+      hittError: req.query.hitt_error || null,
     });
   });
 
+  // Lead marketplace — only show leads from this user's HITT audiences.
+  // Locked leads = lead they can see but can't afford with current credit.
   app.get('/app/leads', async (req, reply) => {
+    const hittId = req.query.hitt_id ? Number(req.query.hitt_id) : null;
+
+    const params = [req.user.id];
+    let hittFilter = '';
+    if (hittId) {
+      params.push(hittId);
+      hittFilter = `AND h.id = $${params.length}`;
+    }
+
     const { rows } = await query(
-      `SELECT l.*
+      `SELECT DISTINCT l.*
        FROM leads l
-       WHERE l.dnc = FALSE
+       JOIN audience_leads al ON al.lead_id = l.id
+       JOIN audiences a ON a.id = al.audience_id
+       JOIN hitt_requests h ON h.id = a.hitt_request_id
+       WHERE h.user_id = $1
+         AND l.dnc = FALSE
          AND l.email IS NOT NULL
-         AND NOT EXISTS (SELECT 1 FROM lead_purchases lp WHERE lp.user_id = $1 AND lp.lead_id = l.id)
+         AND NOT EXISTS (
+           SELECT 1 FROM lead_purchases lp
+           WHERE lp.user_id = $1 AND lp.lead_id = l.id
+         )
+         ${hittFilter}
        ORDER BY l.first_seen DESC
-       LIMIT 50`,
-      [req.user.id]
+       LIMIT 500`,
+      params
     );
-    const priced = rows.map((lead) => ({ lead, tier: priceForAge(lead.first_seen) }));
-    return reply.view('user/leads_market', { user: req.user, leads: priced });
+
+    const priced = rows.map((lead) => {
+      const tier = priceForAge(lead.first_seen);
+      const locked = req.user.credits_cents < tier.priceCents;
+      return { lead, tier, locked };
+    });
+
+    const totalLeads = priced.length;
+    const lockedCount = priced.filter((x) => x.locked).length;
+    const unlockedCount = totalLeads - lockedCount;
+    const missingOppCents = lockedCount * MISSING_OPP_PER_LEAD_CENTS;
+
+    let activeHitt = null;
+    if (hittId) {
+      const { rows: hRows } = await query(
+        'SELECT * FROM hitt_requests WHERE id=$1 AND user_id=$2',
+        [hittId, req.user.id]
+      );
+      activeHitt = hRows[0] || null;
+    }
+
+    return reply.view('user/leads_market', {
+      user: req.user,
+      leads: priced,
+      totalLeads,
+      lockedCount,
+      unlockedCount,
+      missingOppCents,
+      activeHitt,
+    });
   });
 
   app.post('/app/leads/:id/buy', async (req, reply) => {

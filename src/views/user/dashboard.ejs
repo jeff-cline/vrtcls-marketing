@@ -1,4 +1,84 @@
-<h1 class="fw-bold mb-4">Welcome back.</h1>
+<section class="hitt-hero p-5 mb-4 rounded text-light position-relative overflow-hidden">
+  <div class="hitt-hero-bg"></div>
+  <div class="position-relative">
+    <div class="d-flex flex-wrap gap-2 mb-2">
+      <span class="badge bg-warning text-dark fw-bold">SECRET SAUCE</span>
+      <span class="badge bg-light text-dark">Predictive analytics</span>
+      <span class="badge bg-light text-dark">Billions of signals</span>
+      <span class="badge bg-light text-dark">444× accuracy</span>
+    </div>
+    <h1 class="display-3 fw-bold mb-2">Drop a <span class="text-warning">HITT</span>.</h1>
+    <p class="lead mb-0" style="max-width: 760px;">A <strong>HITT</strong> — High Intent Targeted Traffic — is a keyword that pulls live buyers from billions of behavioral signals. Drop one below. Watch it bake. Watch it roll in.</p>
+  </div>
+</section>
+
+<% if (hittError) { %><div class="alert alert-warning">Please fill in both the label and the prompt.</div><% } %>
+
+<section class="bg-dark text-light p-4 p-md-5 rounded mb-5 secret-sauce">
+  <form method="post" action="/app/hitt" class="row g-3">
+    <div class="col-12">
+      <label class="form-label fw-bold text-warning text-uppercase small">Step 1 · Drop your HITT</label>
+      <input name="prompt" class="form-control form-control-lg fs-3 bg-black text-warning border-warning fw-bold"
+             placeholder="e.g. people searching for term life insurance"
+             required maxlength="1000">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small text-uppercase text-secondary">Short label</label>
+      <input name="label" class="form-control" placeholder="term_life" required maxlength="200">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small text-uppercase text-secondary">City</label>
+      <input name="city" class="form-control" placeholder="Dallas">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small text-uppercase text-secondary">State</label>
+      <input name="state" class="form-control" placeholder="TX">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small text-uppercase text-secondary">Radius (mi)</label>
+      <input name="radius_miles" type="number" class="form-control" value="25" min="1" max="500">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small text-uppercase text-secondary">Audience size</label>
+      <input name="audience_limit" type="number" class="form-control" value="500" min="50" max="15000">
+    </div>
+    <div class="col-12 d-flex justify-content-between align-items-center">
+      <div class="text-muted small">⏱ Pulls run for <strong>10–30 minutes</strong>. Don't leave the page once it starts.</div>
+      <button class="btn btn-warning btn-lg fw-bold px-5">Run HITT →</button>
+    </div>
+  </form>
+</section>
+
+<section class="row g-3 mb-5">
+  <div class="col-md-3">
+    <div class="step-card p-4 border rounded bg-white h-100">
+      <div class="step-number">1</div>
+      <h3 class="h5 fw-bold mt-2">Drop the HITT</h3>
+      <p class="text-secondary mb-0">Tell us the intent — "people looking for X." We translate it into a cluster expression matched against billions of behavioral signals.</p>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="step-card p-4 border rounded bg-white h-100">
+      <div class="step-number">2</div>
+      <h3 class="h5 fw-bold mt-2">Predictive bake</h3>
+      <p class="text-secondary mb-0">Our predictive engine cross-references intent clusters, geo, recency. Outputs a high-precision audience of real buyers.</p>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="step-card p-4 border rounded bg-white h-100">
+      <div class="step-number">3</div>
+      <h3 class="h5 fw-bold mt-2">Buy what you can</h3>
+      <p class="text-secondary mb-0">Fresh leads cost $5. Older leads less. Each lead = 5 send tokens. Locked leads stay visible — that's <em>missing opportunity</em>.</p>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="step-card p-4 border rounded bg-warning text-dark h-100">
+      <div class="step-number bg-dark text-warning">4</div>
+      <h3 class="h5 fw-bold mt-2">Watch HITTs roll in</h3>
+      <p class="mb-0">Every send tracks every click. Every click <em>tags</em> the lead. The next email gets sharper. The system gets smarter every day.</p>
+    </div>
+  </div>
+</section>
 
 <div class="row g-3">
   <div class="col-md-3">
@@ -15,13 +95,13 @@
   </div>
   <div class="col-md-2">
     <div class="p-3 border rounded bg-white">
-      <div class="text-muted small">Leads owned</div>
+      <div class="text-muted small">Leads</div>
       <div class="display-6 fw-bold"><%= stats.purchases %></div>
     </div>
   </div>
   <div class="col-md-2">
     <div class="p-3 border rounded bg-white">
-      <div class="text-muted small">Emails sent</div>
+      <div class="text-muted small">Sent</div>
       <div class="display-6 fw-bold"><%= stats.sends %></div>
     </div>
   </div>
@@ -33,31 +113,62 @@
   </div>
 </div>
 
-<div class="row g-3 mt-4">
-  <div class="col-md-6">
-    <div class="p-4 border rounded bg-white h-100">
-      <h3 class="h5 fw-bold">Next step</h3>
-      <ol class="mb-3">
-        <li>Browse the <a href="/app/leads">lead marketplace</a></li>
-        <li>Buy a fresh lead ($5) → 5 send tokens included</li>
-        <li><a href="/app/compose">Compose</a> an email from a template</li>
-        <li>Watch clicks roll in on <a href="/app/campaigns">Campaigns</a></li>
-      </ol>
-      <a href="/app/leads" class="btn btn-warning fw-bold">Browse leads →</a>
-    </div>
-  </div>
-  <div class="col-md-6">
-    <div class="p-4 border rounded bg-white h-100">
-      <h3 class="h5 fw-bold">How pricing works</h3>
-      <ul class="list-unstyled mb-0">
-        <% tiers.forEach(function(t) { %>
-          <li class="d-flex justify-content-between py-1 border-bottom">
-            <span><%= t.label %></span>
-            <span class="fw-bold">$<%= (t.priceCents/100).toFixed(2) %></span>
-          </li>
+<% if (myHitts && myHitts.length) { %>
+<section class="mt-5">
+  <h3 class="fw-bold mb-3">Your recent HITTs</h3>
+  <div class="bg-white border rounded">
+    <table class="table mb-0 align-middle">
+      <thead class="table-light"><tr><th>HITT</th><th>Status</th><th>Leads</th><th>Submitted</th><th></th></tr></thead>
+      <tbody>
+        <% myHitts.forEach(function(h) { %>
+          <tr>
+            <td class="fw-bold"><%= h.label %></td>
+            <td>
+              <% if (h.status === 'baking' || h.status === 'queued') { %>
+                <span class="badge bg-warning text-dark"><span class="hitt-pulse">●</span> <%= h.status %></span>
+              <% } else if (h.status === 'complete') { %>
+                <span class="badge bg-success">complete</span>
+              <% } else { %>
+                <span class="badge bg-secondary"><%= h.status %></span>
+              <% } %>
+            </td>
+            <td><%= h.result_count || 0 %></td>
+            <td class="text-muted small"><%= new Date(h.created_at).toLocaleString() %></td>
+            <td class="text-end">
+              <% if (h.status === 'complete') { %>
+                <a class="btn btn-sm btn-warning fw-bold" href="/app/leads?hitt_id=<%= h.id %>">View leads →</a>
+              <% } else if (h.status === 'baking' || h.status === 'queued') { %>
+                <a class="btn btn-sm btn-outline-warning" href="/app/hitt/<%= h.id %>">Watch bake</a>
+              <% } %>
+            </td>
+          </tr>
         <% }) %>
-      </ul>
-      <div class="text-muted small mt-2">+ <%= tokensPerLead %> send tokens per lead purchased</div>
-    </div>
+      </tbody>
+    </table>
   </div>
-</div>
+</section>
+<% } %>
+
+<% if (recentHitts && recentHitts.length) { %>
+<section class="mt-5">
+  <h3 class="fw-bold mb-3 d-flex align-items-center">
+    <span class="hitt-roll-dot me-2"></span>
+    Watch HITTs roll in
+  </h3>
+  <p class="text-secondary">Live feed of HITTs from across the platform. Anonymized — yours plus the room.</p>
+  <div class="hitt-roll bg-dark text-light p-3 rounded">
+    <% recentHitts.forEach(function(r) { %>
+      <div class="hitt-roll-row d-flex justify-content-between border-bottom border-secondary py-2">
+        <div><span class="text-warning fw-bold">▸</span> <%= r.label %> <span class="text-muted small">— <%= (r.email || '').replace(/(.).*(@.*)/, '$1***$2') %></span></div>
+        <div>
+          <% if (r.status === 'complete') { %>
+            <span class="text-success fw-bold"><%= r.result_count || 0 %> leads</span>
+          <% } else { %>
+            <span class="text-warning"><span class="hitt-pulse">●</span> baking</span>
+          <% } %>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+</section>
+<% } %>

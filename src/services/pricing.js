@@ -14,6 +14,10 @@ export const TIERS = [
 
 export const TOKENS_PER_LEAD = 5;
 
+// Marketing claim: each unconverted lead is roughly $333 in missed pipeline.
+// Used for the "MISSING REVENUE OPPORTUNITY" callout on the lead marketplace.
+export const MISSING_OPP_PER_LEAD_CENTS = 33300;
+
 export function ageDays(firstSeen, now = Date.now()) {
   const t = firstSeen instanceof Date ? firstSeen.getTime() : new Date(firstSeen).getTime();
   return (now - t) / DAY_MS;

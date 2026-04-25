@@ -49,6 +49,11 @@ export async function loadUser(req, reply) {
     req.user = await findUserById(req.session.userId);
     if (!req.user) {
       req.session.destroy();
+      return;
+    }
+    if (req.session.realAdminId) {
+      req.realAdmin = await findUserById(req.session.realAdminId);
+      req.user.impersonating = true;
     }
   }
 }

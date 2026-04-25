@@ -1,0 +1,36 @@
+<h1 class="fw-bold mb-3">My HITTs</h1>
+
+<% if (!hitts.length) { %>
+  <div class="alert alert-info">No HITTs yet. <a href="/app">Drop your first one →</a></div>
+<% } %>
+
+<table class="table table-hover bg-white align-middle">
+  <thead><tr><th>Label</th><th>Prompt</th><th>Geo</th><th>Status</th><th>Leads</th><th>Submitted</th><th></th></tr></thead>
+  <tbody>
+    <% hitts.forEach(function(h) { %>
+      <tr>
+        <td class="fw-bold"><%= h.label %></td>
+        <td class="text-muted small"><%= h.prompt %></td>
+        <td><%= h.city || '' %><%= h.state ? ', '+h.state : '' %></td>
+        <td>
+          <% if (h.status === 'baking' || h.status === 'queued') { %>
+            <span class="badge bg-warning text-dark"><span class="hitt-pulse">●</span> <%= h.status %></span>
+          <% } else if (h.status === 'complete') { %>
+            <span class="badge bg-success">complete</span>
+          <% } else { %>
+            <span class="badge bg-secondary"><%= h.status %></span>
+          <% } %>
+        </td>
+        <td><%= h.result_count || 0 %></td>
+        <td class="text-muted small"><%= new Date(h.created_at).toLocaleString() %></td>
+        <td class="text-end">
+          <% if (h.status === 'complete') { %>
+            <a class="btn btn-sm btn-warning fw-bold" href="/app/leads?hitt_id=<%= h.id %>">Open</a>
+          <% } else if (h.status === 'baking' || h.status === 'queued') { %>
+            <a class="btn btn-sm btn-outline-warning" href="/app/hitt/<%= h.id %>">Watch</a>
+          <% } %>
+        </td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table>

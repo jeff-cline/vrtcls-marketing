@@ -11,6 +11,7 @@ import { config, isProd } from './config.js';
 import { loadUser } from './auth.js';
 import publicRoutes from './routes/public.js';
 import userRoutes from './routes/user.js';
+import hittRoutes from './routes/hitt.js';
 import adminRoutes from './routes/admin.js';
 import trackingRoutes from './routes/tracking.js';
 
@@ -47,6 +48,7 @@ app.addHook('preHandler', loadUser);
 await app.register(publicRoutes);
 await app.register(trackingRoutes);
 await app.register(userRoutes);
+await app.register(hittRoutes);
 await app.register(adminRoutes);
 
 app.setNotFoundHandler((req, reply) => {

@@ -1,13 +1,48 @@
-<h1 class="fw-bold mb-3">Lead marketplace</h1>
-<p class="text-secondary">Price tiers are based on how fresh the intent signal is. Every purchase includes 5 send tokens.</p>
+<% if (activeHitt) { %>
+  <div class="d-flex align-items-center mb-3 small">
+    <a href="/app/hitts" class="text-decoration-none">← All HITTs</a>
+    <span class="mx-2 text-muted">/</span>
+    <span class="fw-bold"><%= activeHitt.label %></span>
+    <span class="text-muted ms-2">— <%= activeHitt.prompt %></span>
+  </div>
+<% } %>
 
-<% if (!leads.length) { %>
-  <div class="alert alert-info">No leads in the pool yet. Admin needs to import from the MCP.</div>
+<section class="opportunity-bar p-4 mb-4 rounded text-light position-relative overflow-hidden">
+  <div class="opportunity-bg"></div>
+  <div class="position-relative row align-items-center g-3">
+    <div class="col-md-3 text-center">
+      <div class="text-uppercase small text-warning fw-bold">HITT TOTAL</div>
+      <div class="display-3 fw-bold"><%= totalLeads %></div>
+      <div class="small text-light-50">leads in this audience</div>
+    </div>
+    <div class="col-md-3 text-center">
+      <div class="text-uppercase small text-success fw-bold">UNLOCKED</div>
+      <div class="display-3 fw-bold text-success"><%= unlockedCount %></div>
+      <div class="small text-light-50">ready to buy</div>
+    </div>
+    <div class="col-md-3 text-center">
+      <div class="text-uppercase small text-danger fw-bold">LOCKED</div>
+      <div class="display-3 fw-bold text-danger"><%= lockedCount %></div>
+      <div class="small text-light-50">need more credit</div>
+    </div>
+    <div class="col-md-3 text-center border-start border-secondary">
+      <div class="text-uppercase small text-warning fw-bold">MISSING OPPORTUNITY</div>
+      <div class="display-4 fw-bold text-warning">$<%= (missingOppCents/100).toLocaleString('en-US', {maximumFractionDigits:0}) %></div>
+      <div class="small text-light-50">$333 × <%= lockedCount %> locked leads</div>
+    </div>
+  </div>
+</section>
+
+<% if (totalLeads === 0) { %>
+  <div class="alert alert-info">
+    No leads available yet. <a href="/app">Drop a HITT →</a> to get started.
+  </div>
 <% } %>
 
 <table class="table table-hover bg-white align-middle">
   <thead>
     <tr>
+      <th></th>
       <th>Name</th>
       <th>City / State</th>
       <th>Age</th>
@@ -18,21 +53,44 @@
   </thead>
   <tbody>
     <% leads.forEach(function(x) { %>
-      <tr>
-        <td><%= x.lead.first_name || '' %> <%= x.lead.last_name || '' %></td>
-        <td><%= x.lead.address?.city || '' %> <%= x.lead.address?.state || '' %></td>
+      <tr class="<%= x.locked ? 'lead-locked' : '' %>">
+        <td style="width:36px;">
+          <% if (x.locked) { %>
+            <span class="lock-icon" title="Add credits to unlock">🔒</span>
+          <% } else { %>
+            <span class="text-success">●</span>
+          <% } %>
+        </td>
+        <td class="<%= x.locked ? 'text-muted' : 'fw-bold' %>">
+          <% if (x.locked) { %>
+            <span class="locked-blur">█████ ████████</span>
+          <% } else { %>
+            <%= x.lead.first_name || '' %> <%= x.lead.last_name || '' %>
+          <% } %>
+        </td>
+        <td class="<%= x.locked ? 'text-muted' : '' %>">
+          <%= x.lead.address?.city || '' %> <%= x.lead.address?.state || '' %>
+        </td>
         <td class="text-muted small"><%= x.tier.ageDays.toFixed(1) %>d</td>
         <td><span class="badge bg-secondary"><%= x.tier.label %></span></td>
         <td class="text-end fw-bold">$<%= (x.tier.priceCents/100).toFixed(2) %></td>
         <td class="text-end">
-          <form method="post" action="/app/leads/<%= x.lead.id %>/buy" class="d-inline m-0">
-            <button class="btn btn-sm btn-warning fw-bold"
-              <% if (user.credits_cents < x.tier.priceCents) { %>disabled<% } %>>
-              Buy
-            </button>
-          </form>
+          <% if (x.locked) { %>
+            <span class="text-muted small">Locked</span>
+          <% } else { %>
+            <form method="post" action="/app/leads/<%= x.lead.id %>/buy" class="d-inline m-0">
+              <button class="btn btn-sm btn-warning fw-bold">Buy</button>
+            </form>
+          <% } %>
         </td>
       </tr>
     <% }) %>
   </tbody>
 </table>
+
+<% if (lockedCount > 0) { %>
+  <div class="text-center my-4">
+    <p class="text-muted">Unlock <%= lockedCount %> more leads — recover up to <strong>$<%= (missingOppCents/100).toLocaleString('en-US', {maximumFractionDigits:0}) %></strong> in pipeline.</p>
+    <a href="mailto:hello@vrtcls.marketing?subject=Add%20credits" class="btn btn-warning fw-bold">Request more credit →</a>
+  </div>
+<% } %>
