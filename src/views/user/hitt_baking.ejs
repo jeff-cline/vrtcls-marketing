@@ -1,13 +1,20 @@
-<section class="bake-stage py-5 text-center text-light position-relative">
+<section class="bake-stage py-5 text-center text-light position-relative overflow-hidden">
   <div class="bake-bg"></div>
-  <div class="position-relative">
+  <canvas id="bake-rain" class="bake-rain"></canvas>
+  <div class="position-relative" style="z-index:3;">
     <div class="badge bg-warning text-dark fs-6 mb-3">HITT IN PROGRESS — DO NOT LEAVE THIS PAGE</div>
     <h1 class="display-3 fw-bold mb-2">BAKING<span class="bake-dots"><span>.</span><span>.</span><span>.</span></span></h1>
     <p class="lead mb-0">"<%= hitt.prompt %>"</p>
     <% if (hitt.city || hitt.state) { %>
-      <p class="text-warning"><%= hitt.city %><%= hitt.state ? ', '+hitt.state : '' %> · <%= hitt.radius_miles %> mi · up to <%= hitt.audience_limit %> people</p>
+      <p class="text-warning mb-0"><%= hitt.city %><%= hitt.state ? ', '+hitt.state : '' %> · <%= hitt.radius_miles %> mi · up to <%= hitt.audience_limit %> people</p>
     <% } %>
   </div>
+</section>
+
+<section class="bake-reel position-relative overflow-hidden mb-4">
+  <div class="bake-reel-fade-l"></div>
+  <div class="bake-reel-fade-r"></div>
+  <div id="bake-reel-track" class="bake-reel-track"></div>
 </section>
 
 <section class="bake-meter bg-dark text-light p-4 rounded mb-4 position-relative overflow-hidden">
@@ -33,15 +40,26 @@
 </section>
 
 <script>
+window.__HITT__ = {
+  id: <%- JSON.stringify(hitt.id) %>,
+  startedAt: <%- JSON.stringify(hitt.created_at) %>,
+  city: <%- JSON.stringify(hitt.city || '') %>,
+  state: <%- JSON.stringify(hitt.state || '') %>,
+  radius: <%- JSON.stringify(hitt.radius_miles) %>,
+  prompt: <%- JSON.stringify(hitt.prompt || '') %>
+};
+</script>
+<script>
 (function () {
-  const id = <%= hitt.id %>;
-  const startedAt = new Date('<%= hitt.created_at %>').getTime();
+  const H = window.__HITT__;
+  const startedAt = new Date(H.startedAt).getTime();
   const log = document.getElementById('bake-log');
   const statusEl = document.getElementById('bake-status');
+
   const messages = [
     'Translating intent prompt into cluster expression…',
     'Cross-referencing 100M+ behavioral signals…',
-    'Filtering by geo (' + (<%= JSON.stringify(hitt.city || '') %> || 'national') + ', ' + <%= hitt.radius_miles %> + ' mi)…',
+    'Filtering by geo (' + (H.city || 'national') + ', ' + H.radius + ' mi)…',
     'Resolving identities to verified emails…',
     'Scoring intent freshness…',
     'Removing DNC and bounced records…',
@@ -49,7 +67,7 @@
     'Cross-tagging against existing intent clusters…',
     'Validating phone + address coverage…',
     'Locking pricing tiers by lead age…',
-    'Almost there — preparing your dashboard…',
+    'Almost there — preparing your dashboard…'
   ];
   let i = 0;
   function pushLine() {
@@ -76,14 +94,14 @@
 
   async function poll() {
     try {
-      const res = await fetch('/app/hitt/' + id + '/status', { headers: { 'accept': 'application/json' } });
+      const res = await fetch('/app/hitt/' + H.id + '/status', { headers: { 'accept': 'application/json' } });
       if (!res.ok) return;
       const data = await res.json();
       statusEl.textContent = data.status;
       if (data.status === 'complete') {
         document.querySelector('.bake-bar').style.width = '100%';
         statusEl.textContent = 'complete — ' + (data.result_count || 0) + ' leads ready';
-        setTimeout(function () { window.location.href = '/app/leads?hitt_id=' + id; }, 600);
+        setTimeout(function () { window.location.href = '/app/leads?hitt_id=' + H.id; }, 600);
       } else if (data.status === 'failed') {
         statusEl.textContent = 'failed — please contact support';
       }
@@ -91,5 +109,67 @@
   }
   poll();
   setInterval(poll, 5000);
+
+  /* ====== matrix-style code reel ====== */
+  const canvas = document.getElementById('bake-rain');
+  const ctx = canvas.getContext('2d');
+  function size() {
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+  }
+  size();
+  window.addEventListener('resize', size);
+  const charset = '01░▒▓█ABCDEF0123456789{}[]:;.,/\\|<>=+*#$@%&_~?!';
+  const fontSize = 14;
+  let columns = Math.floor(canvas.width / fontSize);
+  let drops = new Array(columns).fill(0).map(() => Math.random() * -50);
+  function rainTick() {
+    if (Math.floor(canvas.width / fontSize) !== columns) {
+      columns = Math.floor(canvas.width / fontSize);
+      drops = new Array(columns).fill(0).map(() => Math.random() * -50);
+    }
+    ctx.fillStyle = 'rgba(10,10,12,0.18)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.font = fontSize + 'px ui-monospace, Menlo, monospace';
+    for (let c = 0; c < columns; c++) {
+      const ch = charset[Math.floor(Math.random() * charset.length)];
+      const y = drops[c] * fontSize;
+      ctx.fillStyle = Math.random() > 0.96 ? '#ffc107' : 'rgba(255,193,7,0.55)';
+      ctx.fillText(ch, c * fontSize, y);
+      if (y > canvas.height && Math.random() > 0.975) drops[c] = 0;
+      drops[c]++;
+    }
+  }
+  setInterval(rainTick, 60);
+
+  /* ====== horizontal reel of fake JSON / signals ====== */
+  const reel = document.getElementById('bake-reel-track');
+  const fragments = [
+    '{"person_id":"p_8a3f12","intent":0.94,"sig":"search:term_life"}',
+    'cluster.match("' + (H.prompt || 'intent') + '") => 0.88',
+    'geo.within("' + (H.city || 'US') + '", ' + H.radius + 'mi) ✓',
+    'fresh.window=24h scoring…',
+    'identity.resolve(email|phone|name|address)',
+    '{"email":"j***@e.com","tier":"24h","price_cents":500}',
+    'dnc.filter(removed=2,431)',
+    'compile.audience(target=' + (H.prompt || 'intent') + ')',
+    'predictive.model.v9.2 → confidence 0.91',
+    '{"sig":"page_view","domain":"compare-quotes.io","weight":0.74}',
+    'rebalance(intent_freshness × geo_density)',
+    'verify.phone(twilio_lookup) batch=200',
+    'tag.synth(["' + ((H.prompt || '').split(' ')[0] || 'intent') + '","high_intent"])',
+    'lock.tier(<=24h=$5.00, <=7d=$2.50, <=30d=$1.00, archive=$0.50)',
+    'audience.size=' + (Math.floor(Math.random() * 400) + 200),
+    'signals.scanned=' + (Math.floor(Math.random() * 9) + 1) + '.' + Math.floor(Math.random() * 9) + 'B'
+  ];
+  function reelLine() {
+    if (reel.children.length > 40) reel.removeChild(reel.firstChild);
+    const span = document.createElement('span');
+    span.className = 'bake-reel-line';
+    span.textContent = fragments[Math.floor(Math.random() * fragments.length)];
+    reel.appendChild(span);
+  }
+  for (let k = 0; k < 14; k++) reelLine();
+  setInterval(reelLine, 220);
 })();
 </script>
