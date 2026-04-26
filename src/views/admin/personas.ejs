@@ -1,0 +1,82 @@
+<h1 class="display-6 fw-bold mb-3">Personas</h1>
+<p class="text-muted">A persona is the writer voice attached to a mailbox. The display name on a persona becomes the <code>From</code> name on every send from any mailbox bound to that persona.</p>
+
+<% if (flash) { %>
+  <div class="alert alert-info py-2 small"><%= flash %></div>
+<% } %>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <h5 class="card-title">Add persona</h5>
+    <form method="post" action="/admin/personas" class="row g-2">
+      <div class="col-md-4">
+        <label class="form-label small">Display name *</label>
+        <input class="form-control" name="display_name" placeholder="Sarah Chen" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small">Title (optional)</label>
+        <input class="form-control" name="title" placeholder="Customer success @ vrtcls">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small">Avatar URL (optional)</label>
+        <input class="form-control" name="avatar_url" placeholder="https://...">
+      </div>
+      <div class="col-12">
+        <label class="form-label small">Bio / writer voice (private — not sent in email)</label>
+        <textarea class="form-control" name="bio" rows="2" placeholder="Friendly, concise, asks short questions. Signs off as Sarah."></textarea>
+      </div>
+      <div class="col-12">
+        <label class="form-label small">Signature HTML (rendered at the end of every email)</label>
+        <textarea class="form-control font-monospace" name="signature_html" rows="3" placeholder="<p>— Sarah<br>Customer Success @ vrtcls</p>"></textarea>
+      </div>
+      <div class="col-12">
+        <button class="btn btn-warning fw-bold">Add persona</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<% if (personas.length === 0) { %>
+  <p class="text-muted">No personas yet. Add one above before creating mailboxes.</p>
+<% } %>
+
+<% personas.forEach((p) => { %>
+  <details class="card mb-3">
+    <summary class="card-header">
+      <strong><%= p.display_name %></strong>
+      <% if (p.title) { %><span class="text-muted">— <%= p.title %></span><% } %>
+      <span class="badge bg-secondary ms-2"><%= p.mailbox_count %> mailbox<%= p.mailbox_count === 1 ? '' : 'es' %></span>
+    </summary>
+    <div class="card-body">
+      <form method="post" action="/admin/personas/<%= p.id %>" class="row g-2">
+        <div class="col-md-4">
+          <label class="form-label small">Display name</label>
+          <input class="form-control" name="display_name" value="<%= p.display_name %>" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small">Title</label>
+          <input class="form-control" name="title" value="<%= p.title || '' %>">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small">Avatar URL</label>
+          <input class="form-control" name="avatar_url" value="<%= p.avatar_url || '' %>">
+        </div>
+        <div class="col-12">
+          <label class="form-label small">Bio</label>
+          <textarea class="form-control" name="bio" rows="2"><%= p.bio || '' %></textarea>
+        </div>
+        <div class="col-12">
+          <label class="form-label small">Signature HTML</label>
+          <textarea class="form-control font-monospace" name="signature_html" rows="3"><%= p.signature_html || '' %></textarea>
+        </div>
+        <div class="col-12 d-flex gap-2">
+          <button class="btn btn-warning fw-bold">Save</button>
+        </div>
+      </form>
+      <form method="post" action="/admin/personas/<%= p.id %>/delete" class="mt-2"
+            onsubmit="return confirm('Delete persona? Mailboxes using it will be unlinked.');">
+        <button class="btn btn-sm btn-outline-danger">Delete persona</button>
+      </form>
+    </div>
+  </details>
+<% }) %>

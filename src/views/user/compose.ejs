@@ -11,9 +11,30 @@
       <label class="form-label fw-bold">Template</label>
       <select name="template_id" class="form-select" required>
         <% templates.forEach(function(t) { %>
-          <option value="<%= t.id %>"><%= t.name %> — "<%= t.subject %>"</option>
+          <option value="<%= t.id %>">
+            <%= t.owner_user_id ? '★ ' : '' %><%= t.name %> — "<%= t.subject %>"
+          </option>
         <% }) %>
       </select>
+      <div class="form-text">★ = your private template; others are the global library.</div>
+    </div>
+    <div class="col-md-12">
+      <label class="form-label fw-bold">Send from mailbox</label>
+      <% if (mailboxes.length === 0) { %>
+        <div class="alert alert-warning py-2 small mb-0">
+          No mailboxes assigned to you yet. Ask your admin to add a Zapmail mailbox under <code>/admin/mailboxes</code>. Until then, sends fall back to the global Resend address.
+        </div>
+      <% } else { %>
+        <select name="mailbox_id" class="form-select">
+          <option value="">— first available (auto) —</option>
+          <% mailboxes.forEach(function(m) { %>
+            <option value="<%= m.id %>">
+              <%= m.label %><% if (m.persona_name) { %> · <%= m.persona_name %><% } %>
+              (<%= m.smtp_user %>) — <%= m.sends_today %>/<%= m.daily_cap %> today
+            </option>
+          <% }) %>
+        </select>
+      <% } %>
     </div>
   </div>
 

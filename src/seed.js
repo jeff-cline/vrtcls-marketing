@@ -81,20 +81,104 @@ const TEMPLATES = [
       { key: 'alt', label: 'Alternative' },
     ]),
   },
+  // ===========================================================================
+  // Persona-aware variants — these reference {{persona_name}} and
+  // {{persona_signature}}, so the From-name on the mailbox flows through into
+  // the body itself. Pair with a persona on the sending mailbox.
+  // ===========================================================================
+  {
+    slug: 'persona_warm_intro',
+    name: 'Persona — Warm intro',
+    subject: '{{first_name}} — quick one from {{persona_name}}',
+    body_html: `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#222;">
+<p>Hi {{first_name}},</p>
+<p>{{persona_name}} here — I help folks in {{city}} who are weighing options on this. Mind if I share a 2-minute overview?</p>
+<p><a href="https://vrtcls.marketing/overview" data-link-key="overview" style="display:inline-block;padding:10px 18px;background:#ffc107;color:#000;text-decoration:none;border-radius:4px;font-weight:bold">See the overview</a></p>
+<p>If it's not useful just hit reply with "no thanks" and I'll back off.</p>
+{{persona_signature}}
+</div>`,
+    links: JSON.stringify([{ key: 'overview', label: 'Overview' }]),
+  },
+  {
+    slug: 'persona_question',
+    name: 'Persona — One question',
+    subject: 'A quick question, {{first_name}}',
+    body_html: `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#222;">
+<p>Hi {{first_name}},</p>
+<p>I'm {{persona_name}}{{persona_title}}. One question — are you actively comparing options right now, or is this a "someday" thing?</p>
+<p>If you're actively shopping: <a href="https://vrtcls.marketing/compare" data-link-key="compare">here's a side-by-side that takes 90 seconds</a>.</p>
+<p>If it's "someday," say so and I'll send something different.</p>
+{{persona_signature}}
+</div>`,
+    links: JSON.stringify([{ key: 'compare', label: 'Comparison' }]),
+  },
+  {
+    slug: 'persona_local_proof',
+    name: 'Persona — Local proof',
+    subject: 'Saw {{city}} on my list',
+    body_html: `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#222;">
+<p>{{first_name}},</p>
+<p>{{persona_name}} here. A handful of folks in {{zip}} signed up last week — figured you'd want to see what they got before the offer changes.</p>
+<p><a href="https://vrtcls.marketing/local" data-link-key="local" style="display:inline-block;padding:10px 18px;background:#212529;color:#fff;text-decoration:none;border-radius:4px;font-weight:bold">See what your neighbors got</a></p>
+<p>Worst case it's not for you and you ignore me — no harm done.</p>
+{{persona_signature}}
+</div>`,
+    links: JSON.stringify([{ key: 'local', label: 'Local proof' }]),
+  },
+  {
+    slug: 'persona_resource',
+    name: 'Persona — Resource hand-off',
+    subject: 'Made this for {{state}} folks like you',
+    body_html: `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#222;">
+<p>Hi {{first_name}},</p>
+<p>{{persona_name}} again. Put together a one-pager specifically for people in {{state}} who are running into this — no form, no signup, just the page.</p>
+<p><a href="https://vrtcls.marketing/guide" data-link-key="guide">Read the one-pager</a></p>
+<p>Want the deeper version? <a href="https://vrtcls.marketing/deep" data-link-key="deep">Here it is</a> — same deal, no friction.</p>
+{{persona_signature}}
+</div>`,
+    links: JSON.stringify([
+      { key: 'guide', label: 'One-pager' },
+      { key: 'deep', label: 'Deep version' },
+    ]),
+  },
+  {
+    slug: 'persona_direct_cta',
+    name: 'Persona — Direct CTA',
+    subject: '{{first_name}}, this expires Friday',
+    body_html: `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#222;">
+<p>{{first_name}},</p>
+<p>{{persona_name}} — keeping this short. The current offer for {{city}} closes <strong>this Friday</strong>.</p>
+<p style="text-align:center;margin:24px 0;">
+  <a href="https://vrtcls.marketing/claim" data-link-key="claim" style="display:inline-block;padding:14px 28px;background:#28a745;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;font-size:16px">Claim before Friday</a>
+</p>
+<p>If now's not the time, hit reply with "later" and I'll check back next month.</p>
+{{persona_signature}}
+</div>`,
+    links: JSON.stringify([{ key: 'claim', label: 'Claim CTA' }]),
+  },
 ];
 
 async function seedTemplates() {
   for (const t of TEMPLATES) {
-    await query(
-      `INSERT INTO email_templates (slug, name, subject, body_html, links)
-       VALUES ($1, $2, $3, $4, $5::jsonb)
-       ON CONFLICT (slug) DO UPDATE SET
-         name = EXCLUDED.name,
-         subject = EXCLUDED.subject,
-         body_html = EXCLUDED.body_html,
-         links = EXCLUDED.links`,
-      [t.slug, t.name, t.subject, t.body_html, t.links]
+    // Upsert against the partial unique index on (slug) WHERE owner_user_id IS NULL
+    const { rows } = await query(
+      'SELECT id FROM email_templates WHERE owner_user_id IS NULL AND slug = $1',
+      [t.slug]
     );
+    if (rows[0]) {
+      await query(
+        `UPDATE email_templates
+           SET name=$1, subject=$2, body_html=$3, links=$4::jsonb, updated_at=NOW()
+         WHERE id=$5`,
+        [t.name, t.subject, t.body_html, t.links, rows[0].id]
+      );
+    } else {
+      await query(
+        `INSERT INTO email_templates (slug, name, subject, body_html, links, owner_user_id)
+         VALUES ($1,$2,$3,$4,$5::jsonb,NULL)`,
+        [t.slug, t.name, t.subject, t.body_html, t.links]
+      );
+    }
   }
   console.log(`seeded ${TEMPLATES.length} templates`);
 }

@@ -1,8 +1,9 @@
 import { query, tx } from '../db.js';
 import { requireAdmin, findUserById } from '../auth.js';
 import { grantCredits, grantTokens } from '../services/credits.js';
-import { sendOne, sendTransactional } from '../services/email.js';
+import { sendOne, sendTransactional, sendTestToSelf } from '../services/email.js';
 import { ingestPersons } from '../services/personImport.js';
+import { verifyMailbox, sendViaMailbox, clearTransport } from '../services/smtpSender.js';
 import { config } from '../config.js';
 
 async function notifyCustomerOnFulfill(hitt, leadCount) {
@@ -187,15 +188,28 @@ export default async function adminRoutes(app) {
   });
 
   app.get('/admin/templates', async (req, reply) => {
-    const { rows } = await query('SELECT * FROM email_templates ORDER BY id');
-    return reply.view('admin/templates', { user: req.user, templates: rows });
+    const { rows } = await query(
+      'SELECT * FROM email_templates WHERE owner_user_id IS NULL ORDER BY id'
+    );
+    const { rows: mailboxes } = await query(
+      `SELECT m.id, m.label, p.display_name AS persona_name
+       FROM mailboxes m LEFT JOIN personas p ON p.id = m.persona_id
+       WHERE m.status='active' ORDER BY m.label`
+    );
+    return reply.view('admin/templates', {
+      user: req.user,
+      templates: rows,
+      mailboxes,
+      flash: req.query.flash || null,
+      flashErr: req.query.err || null,
+    });
   });
 
   app.post('/admin/templates/:id', async (req, reply) => {
     const id = Number(req.params.id);
     const { name, subject, body_html } = req.body;
     await query(
-      'UPDATE email_templates SET name=$1, subject=$2, body_html=$3 WHERE id=$4',
+      'UPDATE email_templates SET name=$1, subject=$2, body_html=$3, updated_at=NOW() WHERE id=$4',
       [name, subject, body_html, id]
     );
     return reply.redirect('/admin/templates');
@@ -323,6 +337,7 @@ export default async function adminRoutes(app) {
       SELECT
         COUNT(*)::int AS sent,
         COUNT(opened_at)::int AS opened,
+        COUNT(bounced_at)::int AS bounced,
         (SELECT COUNT(*)::int FROM click_events) AS clicks
       FROM sends WHERE status = 'sent'
     `);
@@ -337,6 +352,37 @@ export default async function adminRoutes(app) {
       WHERE created_at > NOW() - INTERVAL '30 days'
       GROUP BY 1 ORDER BY 1
     `);
+    const { rows: byPersona } = await query(`
+      SELECT COALESCE(p.display_name, '— no persona —') AS persona,
+             COUNT(s.*)::int AS sent,
+             COUNT(s.opened_at)::int AS opened,
+             COUNT(s.bounced_at)::int AS bounced,
+             COALESCE(SUM(c.cnt),0)::int AS clicks
+      FROM sends s
+      LEFT JOIN personas p ON p.id = s.persona_id
+      LEFT JOIN (
+        SELECT send_id, COUNT(*)::int AS cnt FROM click_events GROUP BY send_id
+      ) c ON c.send_id = s.id
+      WHERE s.status = 'sent'
+      GROUP BY p.display_name
+      ORDER BY sent DESC
+    `);
+    const { rows: byMailbox } = await query(`
+      SELECT COALESCE(m.label, '— Resend fallback —') AS mailbox,
+             m.smtp_user,
+             COUNT(s.*)::int AS sent,
+             COUNT(s.opened_at)::int AS opened,
+             COUNT(s.bounced_at)::int AS bounced,
+             COALESCE(SUM(c.cnt),0)::int AS clicks
+      FROM sends s
+      LEFT JOIN mailboxes m ON m.id = s.mailbox_id
+      LEFT JOIN (
+        SELECT send_id, COUNT(*)::int AS cnt FROM click_events GROUP BY send_id
+      ) c ON c.send_id = s.id
+      WHERE s.status = 'sent'
+      GROUP BY m.label, m.smtp_user
+      ORDER BY sent DESC
+    `);
     return reply.view('admin/reports', {
       user: req.user,
       revenue: rev[0],
@@ -344,6 +390,8 @@ export default async function adminRoutes(app) {
       delivery: deliv[0],
       hittStats,
       dailyRev,
+      byPersona,
+      byMailbox,
     });
   });
 
@@ -463,5 +511,213 @@ export default async function adminRoutes(app) {
     }
     await query(`UPDATE campaigns SET status='sent' WHERE id=$1`, [campaignId]);
     return reply.redirect(`/admin/reports?sent=${sent}&failed=${failed}`);
+  });
+
+  // ==========================================================================
+  // Personas — writer voice / display identity for outbound mail
+  // ==========================================================================
+
+  app.get('/admin/personas', async (req, reply) => {
+    const { rows } = await query(
+      `SELECT p.*,
+              (SELECT COUNT(*)::int FROM mailboxes m WHERE m.persona_id = p.id) AS mailbox_count
+       FROM personas p ORDER BY p.created_at DESC`
+    );
+    return reply.view('admin/personas', {
+      user: req.user,
+      personas: rows,
+      flash: req.query.flash || null,
+    });
+  });
+
+  app.post('/admin/personas', async (req, reply) => {
+    const display_name = (req.body.display_name || '').trim().slice(0, 200);
+    const title = (req.body.title || '').trim().slice(0, 200);
+    const bio = (req.body.bio || '').trim().slice(0, 2000);
+    const signature_html = (req.body.signature_html || '').slice(0, 4000);
+    const avatar_url = (req.body.avatar_url || '').trim().slice(0, 500);
+    if (!display_name) return reply.redirect('/admin/personas?flash=missing_name');
+    await query(
+      `INSERT INTO personas (display_name, title, bio, signature_html, avatar_url, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [display_name, title, bio, signature_html, avatar_url, req.user.id]
+    );
+    return reply.redirect('/admin/personas?flash=created');
+  });
+
+  app.post('/admin/personas/:id', async (req, reply) => {
+    const id = Number(req.params.id);
+    const display_name = (req.body.display_name || '').trim().slice(0, 200);
+    const title = (req.body.title || '').trim().slice(0, 200);
+    const bio = (req.body.bio || '').trim().slice(0, 2000);
+    const signature_html = (req.body.signature_html || '').slice(0, 4000);
+    const avatar_url = (req.body.avatar_url || '').trim().slice(0, 500);
+    await query(
+      `UPDATE personas SET display_name=$1, title=$2, bio=$3, signature_html=$4, avatar_url=$5
+       WHERE id=$6`,
+      [display_name, title, bio, signature_html, avatar_url, id]
+    );
+    return reply.redirect('/admin/personas?flash=saved');
+  });
+
+  app.post('/admin/personas/:id/delete', async (req, reply) => {
+    const id = Number(req.params.id);
+    await query('DELETE FROM personas WHERE id=$1', [id]);
+    return reply.redirect('/admin/personas?flash=deleted');
+  });
+
+  // ==========================================================================
+  // Mailboxes — SMTP-authed sender accounts
+  // ==========================================================================
+
+  app.get('/admin/mailboxes', async (req, reply) => {
+    const { rows } = await query(
+      `SELECT m.*, p.display_name AS persona_name, u.email AS owner_email
+       FROM mailboxes m
+       LEFT JOIN personas p ON p.id = m.persona_id
+       LEFT JOIN users u ON u.id = m.owner_user_id
+       ORDER BY m.created_at DESC`
+    );
+    const { rows: personas } = await query('SELECT id, display_name FROM personas ORDER BY display_name');
+    const { rows: users } = await query("SELECT id, email FROM users ORDER BY email");
+    return reply.view('admin/mailboxes', {
+      user: req.user,
+      mailboxes: rows,
+      personas,
+      users,
+      flash: req.query.flash || null,
+    });
+  });
+
+  app.post('/admin/mailboxes', async (req, reply) => {
+    const label = (req.body.label || '').trim().slice(0, 200);
+    const smtp_host = (req.body.smtp_host || 'smtp.gmail.com').trim();
+    const smtp_port = Number(req.body.smtp_port || 587);
+    const smtp_secure = req.body.smtp_secure === 'on';
+    const smtp_user = (req.body.smtp_user || '').trim().toLowerCase();
+    const smtp_pass = req.body.smtp_pass || '';
+    const persona_id = req.body.persona_id ? Number(req.body.persona_id) : null;
+    const owner_user_id = req.body.owner_user_id ? Number(req.body.owner_user_id) : null;
+    const daily_cap = Math.max(1, Math.min(500, Number(req.body.daily_cap || 50)));
+    if (!label || !smtp_user || !smtp_pass) {
+      return reply.redirect('/admin/mailboxes?flash=missing');
+    }
+    await query(
+      `INSERT INTO mailboxes
+         (label, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass,
+          persona_id, owner_user_id, daily_cap)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [label, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass,
+       persona_id, owner_user_id, daily_cap]
+    );
+    return reply.redirect('/admin/mailboxes?flash=created');
+  });
+
+  app.post('/admin/mailboxes/:id', async (req, reply) => {
+    const id = Number(req.params.id);
+    const label = (req.body.label || '').trim().slice(0, 200);
+    const smtp_host = (req.body.smtp_host || 'smtp.gmail.com').trim();
+    const smtp_port = Number(req.body.smtp_port || 587);
+    const smtp_secure = req.body.smtp_secure === 'on';
+    const smtp_user = (req.body.smtp_user || '').trim().toLowerCase();
+    const smtp_pass = req.body.smtp_pass || '';
+    const persona_id = req.body.persona_id ? Number(req.body.persona_id) : null;
+    const owner_user_id = req.body.owner_user_id ? Number(req.body.owner_user_id) : null;
+    const daily_cap = Math.max(1, Math.min(500, Number(req.body.daily_cap || 50)));
+    const status = ['active','paused','warming','disabled'].includes(req.body.status) ? req.body.status : 'active';
+
+    // Empty smtp_pass means "don't change" — keep existing.
+    if (smtp_pass) {
+      await query(
+        `UPDATE mailboxes SET label=$1, smtp_host=$2, smtp_port=$3, smtp_secure=$4,
+                              smtp_user=$5, smtp_pass=$6, persona_id=$7, owner_user_id=$8,
+                              daily_cap=$9, status=$10
+         WHERE id=$11`,
+        [label, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_pass,
+         persona_id, owner_user_id, daily_cap, status, id]
+      );
+    } else {
+      await query(
+        `UPDATE mailboxes SET label=$1, smtp_host=$2, smtp_port=$3, smtp_secure=$4,
+                              smtp_user=$5, persona_id=$6, owner_user_id=$7,
+                              daily_cap=$8, status=$9
+         WHERE id=$10`,
+        [label, smtp_host, smtp_port, smtp_secure, smtp_user,
+         persona_id, owner_user_id, daily_cap, status, id]
+      );
+    }
+    clearTransport(id);
+    return reply.redirect('/admin/mailboxes?flash=saved');
+  });
+
+  app.post('/admin/mailboxes/:id/delete', async (req, reply) => {
+    const id = Number(req.params.id);
+    clearTransport(id);
+    await query('DELETE FROM mailboxes WHERE id=$1', [id]);
+    return reply.redirect('/admin/mailboxes?flash=deleted');
+  });
+
+  app.post('/admin/mailboxes/:id/verify', async (req, reply) => {
+    const id = Number(req.params.id);
+    const { rows } = await query(
+      `SELECT m.*, p.display_name AS persona_name FROM mailboxes m
+       LEFT JOIN personas p ON p.id = m.persona_id WHERE m.id = $1`, [id]);
+    const mailbox = rows[0];
+    if (!mailbox) return reply.redirect('/admin/mailboxes?flash=missing');
+    try {
+      await verifyMailbox(mailbox);
+      return reply.redirect(`/admin/mailboxes?flash=verified_${id}`);
+    } catch (err) {
+      const msg = encodeURIComponent(String(err.message || err).slice(0, 200));
+      return reply.redirect(`/admin/mailboxes?flash=verify_failed_${id}&err=${msg}`);
+    }
+  });
+
+  app.post('/admin/mailboxes/:id/test-send', async (req, reply) => {
+    const id = Number(req.params.id);
+    const recipient = (req.body.recipient || req.user.email || '').trim();
+    if (!recipient) return reply.redirect('/admin/mailboxes?flash=missing_recipient');
+
+    const { rows } = await query(
+      `SELECT m.*, p.display_name AS persona_name, p.signature_html AS persona_signature
+       FROM mailboxes m LEFT JOIN personas p ON p.id = m.persona_id WHERE m.id = $1`, [id]);
+    const mailbox = rows[0];
+    if (!mailbox) return reply.redirect('/admin/mailboxes?flash=missing');
+
+    const html = `
+      <div style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#222;">
+        <p>This is a deliverability test from vrtcls.marketing.</p>
+        <p>Mailbox: <strong>${mailbox.label}</strong> (<code>${mailbox.smtp_user}</code>)</p>
+        <p>Persona: <strong>${mailbox.persona_name || '(none)'}</strong></p>
+        ${mailbox.persona_signature || ''}
+      </div>`;
+    try {
+      await sendViaMailbox({
+        mailbox,
+        to: recipient,
+        subject: `vrtcls test send — ${mailbox.label}`,
+        html,
+      });
+      return reply.redirect(`/admin/mailboxes?flash=test_sent_${id}`);
+    } catch (err) {
+      const msg = encodeURIComponent(String(err.message || err).slice(0, 200));
+      return reply.redirect(`/admin/mailboxes?flash=test_failed_${id}&err=${msg}`);
+    }
+  });
+
+  // ==========================================================================
+  // Send-test for admin templates
+  // ==========================================================================
+  app.post('/admin/templates/:id/send-test', async (req, reply) => {
+    const id = Number(req.params.id);
+    const recipient = (req.body.recipient || req.user.email || '').trim();
+    const mailboxId = req.body.mailbox_id ? Number(req.body.mailbox_id) : null;
+    try {
+      await sendTestToSelf({ userId: req.user.id, templateId: id, mailboxId, recipient });
+      return reply.redirect('/admin/templates?flash=test_sent');
+    } catch (err) {
+      const msg = encodeURIComponent(String(err.message || err).slice(0, 200));
+      return reply.redirect(`/admin/templates?flash=test_failed&err=${msg}`);
+    }
   });
 }

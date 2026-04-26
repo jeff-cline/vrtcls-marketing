@@ -2,7 +2,7 @@ import { query } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { priceForAge, TIERS, TOKENS_PER_LEAD, MISSING_OPP_PER_LEAD_CENTS } from '../services/pricing.js';
 import { purchaseLead } from '../services/credits.js';
-import { sendOne } from '../services/email.js';
+import { sendOne, sendTestToSelf } from '../services/email.js';
 
 export default async function userRoutes(app) {
   app.addHook('preHandler', requireAuth);
@@ -128,8 +128,13 @@ export default async function userRoutes(app) {
   });
 
   app.get('/app/compose', async (req, reply) => {
+    // User sees their own templates first, then global library.
     const { rows: templates } = await query(
-      'SELECT id, slug, name, subject FROM email_templates ORDER BY id'
+      `SELECT id, slug, name, subject, owner_user_id
+         FROM email_templates
+         WHERE owner_user_id = $1 OR owner_user_id IS NULL
+         ORDER BY (owner_user_id IS NULL), name`,
+      [req.user.id]
     );
     const { rows: leads } = await query(
       `SELECT l.id, l.first_name, l.last_name, l.email, l.address
@@ -140,11 +145,20 @@ export default async function userRoutes(app) {
        LIMIT 500`,
       [req.user.id]
     );
-    return reply.view('user/compose', { user: req.user, templates, leads });
+    const { rows: mailboxes } = await query(
+      `SELECT m.id, m.label, m.smtp_user, m.daily_cap, m.sends_today, m.status,
+              p.display_name AS persona_name
+         FROM mailboxes m LEFT JOIN personas p ON p.id = m.persona_id
+         WHERE m.owner_user_id = $1 AND m.status = 'active'
+         ORDER BY m.label`,
+      [req.user.id]
+    );
+    return reply.view('user/compose', { user: req.user, templates, leads, mailboxes });
   });
 
   app.post('/app/send', async (req, reply) => {
     const templateId = Number(req.body.template_id);
+    const mailboxId = req.body.mailbox_id ? Number(req.body.mailbox_id) : null;
     const name = (req.body.campaign_name || 'Untitled').slice(0, 200);
     const leadIds = []
       .concat(req.body.lead_ids || [])
@@ -158,24 +172,135 @@ export default async function userRoutes(app) {
     }
 
     const { rows: cam } = await query(
-      `INSERT INTO campaigns (user_id, template_id, name, status)
-       VALUES ($1, $2, $3, 'sending') RETURNING id`,
-      [req.user.id, templateId, name]
+      `INSERT INTO campaigns (user_id, template_id, name, status, mailbox_id)
+       VALUES ($1, $2, $3, 'sending', $4) RETURNING id`,
+      [req.user.id, templateId, name, mailboxId]
     );
     const campaignId = cam[0].id;
 
     const results = { sent: 0, failed: 0 };
     for (const leadId of leadIds) {
       try {
-        await sendOne({ userId: req.user.id, campaignId, leadId, templateId });
+        await sendOne({ userId: req.user.id, campaignId, leadId, templateId, mailboxId });
         results.sent++;
       } catch (err) {
         req.log.warn({ err, leadId }, 'send failed');
         results.failed++;
+        if (err.code === 'daily_cap_reached' || err.code === 'mailbox_inactive') break;
       }
     }
     await query(`UPDATE campaigns SET status='sent' WHERE id=$1`, [campaignId]);
     return reply.redirect(`/app/campaigns/${campaignId}`);
+  });
+
+  // ==========================================================================
+  // User templates — fork-to-edit + send-test
+  // ==========================================================================
+
+  app.get('/app/templates', async (req, reply) => {
+    const { rows: mine } = await query(
+      `SELECT * FROM email_templates WHERE owner_user_id = $1 ORDER BY name`,
+      [req.user.id]
+    );
+    const { rows: globals } = await query(
+      `SELECT * FROM email_templates WHERE owner_user_id IS NULL ORDER BY name`
+    );
+    const { rows: mailboxes } = await query(
+      `SELECT m.id, m.label, p.display_name AS persona_name
+       FROM mailboxes m LEFT JOIN personas p ON p.id = m.persona_id
+       WHERE m.owner_user_id = $1 AND m.status='active' ORDER BY m.label`,
+      [req.user.id]
+    );
+    return reply.view('user/templates', {
+      user: req.user,
+      mine,
+      globals,
+      mailboxes,
+      flash: req.query.flash || null,
+      flashErr: req.query.err || null,
+    });
+  });
+
+  app.post('/app/templates/fork/:id', async (req, reply) => {
+    const id = Number(req.params.id);
+    const { rows } = await query(
+      `SELECT * FROM email_templates WHERE id = $1 AND owner_user_id IS NULL`, [id]
+    );
+    const src = rows[0];
+    if (!src) return reply.redirect('/app/templates?flash=missing');
+    let slug = src.slug;
+    let attempt = 1;
+    while (true) {
+      const { rows: dupe } = await query(
+        `SELECT 1 FROM email_templates WHERE owner_user_id=$1 AND slug=$2`,
+        [req.user.id, slug]
+      );
+      if (dupe.length === 0) break;
+      attempt++;
+      slug = `${src.slug}_${attempt}`;
+    }
+    const { rows: ins } = await query(
+      `INSERT INTO email_templates (slug, name, subject, body_html, links, owner_user_id)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [slug, src.name + ' (mine)', src.subject, src.body_html, src.links, req.user.id]
+    );
+    return reply.redirect(`/app/templates?flash=forked_${ins[0].id}`);
+  });
+
+  app.post('/app/templates/:id', async (req, reply) => {
+    const id = Number(req.params.id);
+    const { name, subject, body_html } = req.body;
+    // Authorization: only the owner can edit. Globals are not editable here.
+    const result = await query(
+      `UPDATE email_templates SET name=$1, subject=$2, body_html=$3, updated_at=NOW()
+       WHERE id=$4 AND owner_user_id=$5`,
+      [name, subject, body_html, id, req.user.id]
+    );
+    if (result.rowCount === 0) return reply.redirect('/app/templates?flash=forbidden');
+    return reply.redirect('/app/templates?flash=saved');
+  });
+
+  app.post('/app/templates/:id/delete', async (req, reply) => {
+    const id = Number(req.params.id);
+    await query(
+      `DELETE FROM email_templates WHERE id=$1 AND owner_user_id=$2`,
+      [id, req.user.id]
+    );
+    return reply.redirect('/app/templates?flash=deleted');
+  });
+
+  app.post('/app/templates/:id/send-test', async (req, reply) => {
+    const id = Number(req.params.id);
+    const recipient = (req.body.recipient || req.user.email || '').trim();
+    const mailboxId = req.body.mailbox_id ? Number(req.body.mailbox_id) : null;
+    // Authorization: must be a global or one I own.
+    const { rows } = await query(
+      `SELECT id FROM email_templates WHERE id=$1 AND (owner_user_id IS NULL OR owner_user_id=$2)`,
+      [id, req.user.id]
+    );
+    if (rows.length === 0) return reply.redirect('/app/templates?flash=forbidden');
+    try {
+      await sendTestToSelf({ userId: req.user.id, templateId: id, mailboxId, recipient });
+      return reply.redirect('/app/templates?flash=test_sent');
+    } catch (err) {
+      const msg = encodeURIComponent(String(err.message || err).slice(0, 200));
+      return reply.redirect(`/app/templates?flash=test_failed&err=${msg}`);
+    }
+  });
+
+  // ==========================================================================
+  // User mailboxes — read-only list of theirs (admin manages)
+  // ==========================================================================
+
+  app.get('/app/mailboxes', async (req, reply) => {
+    const { rows } = await query(
+      `SELECT m.id, m.label, m.smtp_user, m.daily_cap, m.sends_today,
+              m.last_send_at, m.status, p.display_name AS persona_name
+       FROM mailboxes m LEFT JOIN personas p ON p.id = m.persona_id
+       WHERE m.owner_user_id = $1 ORDER BY m.label`,
+      [req.user.id]
+    );
+    return reply.view('user/mailboxes', { user: req.user, mailboxes: rows });
   });
 
   app.get('/app/campaigns', async (req, reply) => {

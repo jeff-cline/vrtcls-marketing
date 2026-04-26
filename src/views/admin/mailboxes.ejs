@@ -1,0 +1,171 @@
+<h1 class="display-6 fw-bold mb-3">Mailboxes</h1>
+<p class="text-muted">SMTP-authenticated sender accounts. Each marketing send goes from a mailbox; the mailbox's persona becomes the <code>From</code> display name.</p>
+
+<% if (flash) { %>
+  <div class="alert alert-info py-2 small"><%= flash %><% if (typeof query !== 'undefined' && query.err) { %> — <%= query.err %><% } %></div>
+<% } %>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <h5 class="card-title">Add mailbox</h5>
+    <p class="small text-muted mb-3">For Zapmail / Google Workspace seats, generate an <strong>App Password</strong> for the account and paste it as SMTP password.</p>
+    <form method="post" action="/admin/mailboxes" class="row g-2">
+      <div class="col-md-4">
+        <label class="form-label small">Label *</label>
+        <input class="form-control" name="label" placeholder="Sarah primary" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small">Persona</label>
+        <select class="form-select" name="persona_id">
+          <option value="">— none —</option>
+          <% personas.forEach((p) => { %>
+            <option value="<%= p.id %>"><%= p.display_name %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small">Owner user</label>
+        <select class="form-select" name="owner_user_id">
+          <option value="">— admin pool —</option>
+          <% users.forEach((u) => { %>
+            <option value="<%= u.id %>"><%= u.email %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small">SMTP host</label>
+        <input class="form-control" name="smtp_host" value="smtp.gmail.com">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Port</label>
+        <input class="form-control" name="smtp_port" value="587" type="number">
+      </div>
+      <div class="col-md-2 d-flex align-items-end pb-1">
+        <div class="form-check">
+          <input type="checkbox" class="form-check-input" name="smtp_secure" id="smtp_secure_new">
+          <label class="form-check-label small" for="smtp_secure_new">SSL (465)</label>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small">Daily cap</label>
+        <input class="form-control" name="daily_cap" value="50" type="number" min="1" max="500">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small">SMTP user (the From address) *</label>
+        <input class="form-control" name="smtp_user" placeholder="sarah@vrtcls.marketing" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small">SMTP password / app password *</label>
+        <input class="form-control" name="smtp_pass" type="password" required>
+      </div>
+      <div class="col-12">
+        <button class="btn btn-warning fw-bold">Add mailbox</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<% if (mailboxes.length === 0) { %>
+  <p class="text-muted">No mailboxes yet. Add one above to enable per-persona SMTP sending.</p>
+<% } %>
+
+<% mailboxes.forEach((m) => { %>
+  <details class="card mb-3">
+    <summary class="card-header d-flex justify-content-between align-items-center">
+      <div>
+        <strong><%= m.label %></strong>
+        <span class="text-muted small">— <%= m.smtp_user %></span>
+        <% if (m.persona_name) { %>
+          <span class="badge bg-info text-dark ms-2"><%= m.persona_name %></span>
+        <% } else { %>
+          <span class="badge bg-warning text-dark ms-2">no persona</span>
+        <% } %>
+        <% if (m.owner_email) { %>
+          <span class="badge bg-secondary ms-1"><%= m.owner_email %></span>
+        <% } %>
+      </div>
+      <div class="small text-muted">
+        <%= m.sends_today %> / <%= m.daily_cap %> today · <%= m.status %>
+      </div>
+    </summary>
+    <div class="card-body">
+      <form method="post" action="/admin/mailboxes/<%= m.id %>" class="row g-2">
+        <div class="col-md-4">
+          <label class="form-label small">Label</label>
+          <input class="form-control" name="label" value="<%= m.label %>" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small">Persona</label>
+          <select class="form-select" name="persona_id">
+            <option value="">— none —</option>
+            <% personas.forEach((p) => { %>
+              <option value="<%= p.id %>" <%= m.persona_id === p.id ? 'selected' : '' %>><%= p.display_name %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small">Owner user</label>
+          <select class="form-select" name="owner_user_id">
+            <option value="">— admin pool —</option>
+            <% users.forEach((u) => { %>
+              <option value="<%= u.id %>" <%= m.owner_user_id === u.id ? 'selected' : '' %>><%= u.email %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small">SMTP host</label>
+          <input class="form-control" name="smtp_host" value="<%= m.smtp_host %>">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">Port</label>
+          <input class="form-control" name="smtp_port" type="number" value="<%= m.smtp_port %>">
+        </div>
+        <div class="col-md-2 d-flex align-items-end pb-1">
+          <div class="form-check">
+            <input type="checkbox" class="form-check-input" name="smtp_secure" id="smtp_secure_<%= m.id %>" <%= m.smtp_secure ? 'checked' : '' %>>
+            <label class="form-check-label small" for="smtp_secure_<%= m.id %>">SSL</label>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small">Daily cap</label>
+          <input class="form-control" name="daily_cap" type="number" min="1" max="500" value="<%= m.daily_cap %>">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small">SMTP user</label>
+          <input class="form-control" name="smtp_user" value="<%= m.smtp_user %>" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small">SMTP password (leave blank to keep)</label>
+          <input class="form-control" name="smtp_pass" type="password" placeholder="••••••">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Status</label>
+          <select class="form-select" name="status">
+            <option value="active" <%= m.status === 'active' ? 'selected' : '' %>>active</option>
+            <option value="warming" <%= m.status === 'warming' ? 'selected' : '' %>>warming</option>
+            <option value="paused" <%= m.status === 'paused' ? 'selected' : '' %>>paused</option>
+            <option value="disabled" <%= m.status === 'disabled' ? 'selected' : '' %>>disabled</option>
+          </select>
+        </div>
+        <div class="col-12 d-flex gap-2 mt-2">
+          <button class="btn btn-warning fw-bold">Save</button>
+        </div>
+      </form>
+
+      <hr>
+      <div class="d-flex flex-wrap gap-2">
+        <form method="post" action="/admin/mailboxes/<%= m.id %>/verify" class="m-0">
+          <button class="btn btn-sm btn-outline-primary">Verify SMTP login</button>
+        </form>
+        <form method="post" action="/admin/mailboxes/<%= m.id %>/test-send" class="d-flex gap-2 m-0">
+          <input class="form-control form-control-sm" name="recipient" placeholder="<%= user.email %>" style="min-width:240px">
+          <button class="btn btn-sm btn-outline-success">Send test</button>
+        </form>
+        <form method="post" action="/admin/mailboxes/<%= m.id %>/delete" class="m-0"
+              onsubmit="return confirm('Delete mailbox? Sends already attributed to it stay attributed.');">
+          <button class="btn btn-sm btn-outline-danger">Delete</button>
+        </form>
+      </div>
+    </div>
+  </details>
+<% }) %>

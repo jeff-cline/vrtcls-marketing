@@ -33,6 +33,49 @@
   </div>
 </div>
 
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="bg-white border rounded p-3">
+      <h3 class="h6 fw-bold">By persona</h3>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Persona</th><th class="text-end">Sent</th><th class="text-end">Open</th><th class="text-end">Click</th><th class="text-end">Bounce</th></tr></thead>
+        <tbody>
+          <% byPersona.forEach(function(r) { %>
+            <tr>
+              <td><%= r.persona %></td>
+              <td class="text-end"><%= r.sent %></td>
+              <td class="text-end"><%= r.opened %><% if (r.sent) { %><span class="text-muted small"> · <%= Math.round(r.opened*100/r.sent) %>%</span><% } %></td>
+              <td class="text-end fw-bold text-warning"><%= r.clicks %></td>
+              <td class="text-end text-danger"><%= r.bounced %></td>
+            </tr>
+          <% }) %>
+          <% if (!byPersona.length) { %><tr><td colspan="5" class="text-muted text-center py-3">No sends yet.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="bg-white border rounded p-3">
+      <h3 class="h6 fw-bold">By mailbox</h3>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Mailbox</th><th class="text-end">Sent</th><th class="text-end">Open</th><th class="text-end">Click</th><th class="text-end">Bounce</th></tr></thead>
+        <tbody>
+          <% byMailbox.forEach(function(r) { %>
+            <tr>
+              <td><strong><%= r.mailbox %></strong><% if (r.smtp_user) { %><div class="small text-muted"><%= r.smtp_user %></div><% } %></td>
+              <td class="text-end"><%= r.sent %></td>
+              <td class="text-end"><%= r.opened %><% if (r.sent) { %><span class="text-muted small"> · <%= Math.round(r.opened*100/r.sent) %>%</span><% } %></td>
+              <td class="text-end fw-bold text-warning"><%= r.clicks %></td>
+              <td class="text-end text-danger"><%= r.bounced %></td>
+            </tr>
+          <% }) %>
+          <% if (!byMailbox.length) { %><tr><td colspan="5" class="text-muted text-center py-3">No sends yet.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <div class="row g-3">
   <div class="col-md-6">
     <div class="bg-white border rounded p-3">

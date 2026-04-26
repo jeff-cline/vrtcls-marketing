@@ -1,0 +1,34 @@
+<h1 class="fw-bold mb-3">My mailboxes</h1>
+<p class="text-secondary">These are the SMTP-authenticated sender accounts assigned to you. Admin manages add/edit. You can pick which mailbox a campaign sends from at <a href="/app/compose">compose time</a>.</p>
+
+<% if (mailboxes.length === 0) { %>
+  <div class="alert alert-warning">
+    No mailboxes assigned yet. Until you have one, sends fall back to a shared transactional address.
+    Ask your admin to provision one (Zapmail / Google Workspace).
+  </div>
+<% } %>
+
+<div class="row g-3">
+<% mailboxes.forEach(function(m) { %>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <strong><%= m.label %></strong>
+            <% if (m.persona_name) { %>
+              <span class="badge bg-info text-dark"><%= m.persona_name %></span>
+            <% } %>
+          </div>
+          <span class="badge bg-secondary"><%= m.status %></span>
+        </div>
+        <div class="text-muted small mt-1"><%= m.smtp_user %></div>
+        <div class="mt-2">
+          <span class="text-muted small">Today:</span>
+          <strong><%= m.sends_today %></strong> / <%= m.daily_cap %> sends
+        </div>
+      </div>
+    </div>
+  </div>
+<% }) %>
+</div>

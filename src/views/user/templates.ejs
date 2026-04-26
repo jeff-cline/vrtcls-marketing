@@ -1,0 +1,94 @@
+<h1 class="fw-bold mb-3">My templates</h1>
+<p class="text-secondary">Edit subject + HTML for the templates you own. Fork any global library template into a private editable copy. Send a test to yourself before composing a real campaign.</p>
+<p class="small text-muted">
+  Lead vars: <code>{{first_name}}</code>, <code>{{city}}</code>, <code>{{state}}</code>, <code>{{zip}}</code>, <code>{{topic}}</code>.
+  Persona vars: <code>{{persona_name}}</code>, <code>{{persona_title}}</code>, <code>{{persona_signature}}</code>.
+  Mark CTAs with <code>data-link-key="slug"</code> to track per-link clicks.
+</p>
+
+<% if (flash) { %>
+  <div class="alert alert-info py-2 small"><%= flash %><% if (flashErr) { %> — <%= flashErr %><% } %></div>
+<% } %>
+
+<h3 class="fw-bold mt-4">My templates (private)</h3>
+<% if (mine.length === 0) { %>
+  <p class="text-muted small">No private templates yet — fork one from the library below to start.</p>
+<% } %>
+<% mine.forEach(function(t) { %>
+  <details class="bg-white p-3 border rounded mb-3">
+    <summary class="fw-bold fs-5">★ <%= t.name %> <span class="text-muted small">(<%= t.slug %>)</span></summary>
+    <form method="post" action="/app/templates/<%= t.id %>" class="mt-3">
+      <div class="mb-2">
+        <label class="form-label">Name</label>
+        <input name="name" class="form-control" value="<%= t.name %>" required>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Subject</label>
+        <input name="subject" class="form-control" value="<%= t.subject %>" required>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">HTML body</label>
+        <textarea name="body_html" class="form-control font-monospace" rows="12"><%= t.body_html %></textarea>
+      </div>
+      <button class="btn btn-warning fw-bold">Save</button>
+    </form>
+
+    <hr>
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+      <form method="post" action="/app/templates/<%= t.id %>/send-test" class="row g-2 align-items-end m-0 flex-grow-1">
+        <div class="col-md-5">
+          <label class="form-label small">Send test to</label>
+          <input class="form-control" name="recipient" value="<%= user.email %>" required>
+        </div>
+        <div class="col-md-5">
+          <label class="form-label small">From mailbox</label>
+          <select class="form-select" name="mailbox_id">
+            <option value="">— first available —</option>
+            <% mailboxes.forEach(function(m) { %>
+              <option value="<%= m.id %>"><%= m.label %><% if (m.persona_name) { %> · <%= m.persona_name %><% } %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-outline-success w-100">Send test</button>
+        </div>
+      </form>
+      <form method="post" action="/app/templates/<%= t.id %>/delete" class="m-0"
+            onsubmit="return confirm('Delete this private template?');">
+        <button class="btn btn-sm btn-outline-danger">Delete</button>
+      </form>
+    </div>
+  </details>
+<% }) %>
+
+<h3 class="fw-bold mt-5">Global library (read-only — fork to edit)</h3>
+<% globals.forEach(function(t) { %>
+  <details class="bg-white p-3 border rounded mb-3">
+    <summary class="fw-bold fs-5"><%= t.name %> <span class="text-muted small">(<%= t.slug %>)</span></summary>
+    <p class="small text-muted mt-2"><strong>Subject:</strong> <%= t.subject %></p>
+    <pre class="bg-light p-2 small" style="max-height:240px;overflow:auto;"><%= t.body_html %></pre>
+    <div class="d-flex gap-2 align-items-end flex-wrap">
+      <form method="post" action="/app/templates/fork/<%= t.id %>" class="m-0">
+        <button class="btn btn-warning fw-bold btn-sm">Fork into my templates</button>
+      </form>
+      <form method="post" action="/app/templates/<%= t.id %>/send-test" class="row g-2 align-items-end m-0 flex-grow-1">
+        <div class="col-md-5">
+          <label class="form-label small">Send test to</label>
+          <input class="form-control form-control-sm" name="recipient" value="<%= user.email %>" required>
+        </div>
+        <div class="col-md-5">
+          <label class="form-label small">From mailbox</label>
+          <select class="form-select form-select-sm" name="mailbox_id">
+            <option value="">— first available —</option>
+            <% mailboxes.forEach(function(m) { %>
+              <option value="<%= m.id %>"><%= m.label %><% if (m.persona_name) { %> · <%= m.persona_name %><% } %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-outline-success btn-sm w-100">Send test</button>
+        </div>
+      </form>
+    </div>
+  </details>
+<% }) %>

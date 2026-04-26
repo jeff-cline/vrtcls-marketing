@@ -34,6 +34,8 @@
           <a class="nav-link text-light" href="/admin/reports">Reports</a>
           <a class="nav-link text-light" href="/admin/send">Send</a>
           <a class="nav-link text-light" href="/admin/templates">Templates</a>
+          <a class="nav-link text-light" href="/admin/mailboxes">Mailboxes</a>
+          <a class="nav-link text-light" href="/admin/personas">Personas</a>
         <% } else { %>
           <a class="nav-link text-light" href="/app">Dashboard</a>
           <a class="nav-link text-light" href="/app/hitts">My HITTs</a>
@@ -41,6 +43,8 @@
           <a class="nav-link text-light" href="/app/my-leads">Owned</a>
           <a class="nav-link text-light" href="/app/compose">Compose</a>
           <a class="nav-link text-light" href="/app/campaigns">Campaigns</a>
+          <a class="nav-link text-light" href="/app/templates">My Templates</a>
+          <a class="nav-link text-light" href="/app/mailboxes">Mailboxes</a>
         <% } %>
         <span class="badge bg-success">$<%= (user.credits_cents/100).toFixed(2) %></span>
         <span class="badge bg-info text-dark"><%= user.email_tokens %> tokens</span>
