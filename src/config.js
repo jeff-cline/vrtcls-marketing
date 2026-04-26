@@ -23,6 +23,10 @@ export const config = {
     replyTo: process.env.EMAIL_REPLY_TO || 'hello@vrtcls.marketing',
   },
   companyAddress: process.env.COMPANY_ADDRESS || 'vrtcls, PO Box XXX, City, ST 00000',
+  zapmail: {
+    apiKey: process.env.ZAPMAIL_API_KEY,
+    apiBase: process.env.ZAPMAIL_API_BASE || 'https://api.zapmail.ai/api',
+  },
   hitt: {
     autoBakeEnabled: process.env.AUTO_BAKE_ENABLED === 'true',
     notifyAdminOnNew: process.env.ADMIN_NOTIFY_ON_HITT !== 'false', // default ON

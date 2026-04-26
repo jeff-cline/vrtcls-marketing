@@ -1,0 +1,129 @@
+<h1 class="fw-bold mb-1">Zapmail</h1>
+<p class="text-muted">
+  Pull mailbox identities and credentials from Zapmail so vrtcls.marketing can send and read mail
+  from each persona automatically.
+</p>
+
+<% if (flash) { %>
+  <div class="alert alert-info py-2 small"><strong><%= flash %></strong><% if (flashErr) { %> — <%= flashErr %><% } %></div>
+<% } %>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-4">
+    <div class="bg-white border rounded p-3 h-100">
+      <div class="text-muted small">API key</div>
+      <div class="fw-bold">
+        <% if (configured) { %>
+          <span class="text-success">configured ✓</span>
+        <% } else { %>
+          <span class="text-danger">missing — set ZAPMAIL_API_KEY in .env</span>
+        <% } %>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="bg-white border rounded p-3 h-100">
+      <div class="text-muted small">Zapmail wallet</div>
+      <div class="fw-bold">
+        <% if (wallet) { %>
+          <%= wallet.balance ?? wallet.amount ?? JSON.stringify(wallet).slice(0,80) %>
+        <% } else { %>
+          <span class="text-muted">—</span>
+        <% } %>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="bg-white border rounded p-3 h-100">
+      <div class="text-muted small">Remote mailboxes</div>
+      <div class="fw-bold">
+        <% if (Array.isArray(remote)) { %>
+          <%= remote.length %>
+        <% } else if (remote && remote.data) { %>
+          <%= remote.data.length %>
+        <% } else { %>
+          <span class="text-muted">— click Sync</span>
+        <% } %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="bg-white border rounded p-3 mb-3">
+      <h5 class="fw-bold mb-2">1. Sync mailbox identities from Zapmail</h5>
+      <p class="text-muted small mb-2">
+        Pulls the list of mailboxes from your Zapmail workspace and upserts each one into vrtcls.
+        This brings in the email address and Zapmail status, but <strong>not</strong> the SMTP
+        password (Zapmail does not return passwords over the API).
+      </p>
+      <form method="post" action="/admin/zapmail/sync" class="m-0">
+        <button class="btn btn-warning fw-bold" <%= configured ? '' : 'disabled' %>>Sync now</button>
+      </form>
+    </div>
+
+    <div class="bg-white border rounded p-3 mb-3">
+      <h5 class="fw-bold mb-2">2. Upload credentials CSV</h5>
+      <p class="text-muted small mb-2">
+        In Zapmail → <strong>Mailboxes → Export → Manual (CSV)</strong>. Download the CSV (it has
+        the SMTP App Password per mailbox), then upload it here. Matching is by email address;
+        we update <code>smtp_pass</code> and flip status to <strong>active</strong>.
+      </p>
+      <form method="post" action="/admin/zapmail/upload-csv" enctype="multipart/form-data" class="m-0">
+        <input type="file" name="csv" accept=".csv,text/csv" class="form-control mb-2" required>
+        <button class="btn btn-warning fw-bold">Import CSV</button>
+      </form>
+    </div>
+
+    <div class="bg-white border rounded p-3 mb-3">
+      <h5 class="fw-bold mb-2">3. (Optional) Trigger a fresh export</h5>
+      <p class="text-muted small mb-2">
+        Asks Zapmail to generate a new MANUAL export. The download link/file appears in the
+        Zapmail UI — grab it, then come back to step 2.
+      </p>
+      <form method="post" action="/admin/zapmail/trigger-export" class="m-0">
+        <button class="btn btn-outline-secondary btn-sm" <%= configured ? '' : 'disabled' %>>
+          Trigger export
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="bg-white border rounded p-3">
+      <h5 class="fw-bold mb-2">Local mailboxes</h5>
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr><th>Email</th><th>Persona</th><th>Status</th><th>Zapmail ID</th></tr>
+        </thead>
+        <tbody>
+          <% local.forEach(function(m) { %>
+            <tr>
+              <td><%= m.smtp_user %></td>
+              <td><%= m.persona_name || '—' %></td>
+              <td>
+                <% if (m.status === 'active') { %>
+                  <span class="badge bg-success">active</span>
+                <% } else { %>
+                  <span class="badge bg-secondary"><%= m.status %></span>
+                <% } %>
+              </td>
+              <td class="small text-muted"><%= m.zapmail_id || '—' %></td>
+            </tr>
+          <% }) %>
+          <% if (!local.length) { %>
+            <tr><td colspan="4" class="text-muted text-center py-3">No mailboxes yet — click Sync.</td></tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+
+    <% if (remote && (Array.isArray(remote) ? remote.length : remote.data)) { %>
+      <div class="bg-white border rounded p-3 mt-3">
+        <h6 class="fw-bold mb-2">Zapmail (remote, raw)</h6>
+        <pre class="small mb-0" style="max-height:240px;overflow:auto;"><%= JSON.stringify(remote, null, 2).slice(0, 4000) %></pre>
+      </div>
+    <% } %>
+  </div>
+</div>

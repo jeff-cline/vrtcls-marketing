@@ -5,7 +5,46 @@ import { sendOne, sendTransactional, sendTestToSelf } from '../services/email.js
 import { ingestPersons } from '../services/personImport.js';
 import { verifyMailbox, sendViaMailbox, clearTransport } from '../services/smtpSender.js';
 import { syncMailboxInbox, markMessageRead } from '../services/imapReader.js';
+import * as zapmail from '../services/zapmail.js';
 import { config } from '../config.js';
+
+function parseCsv(text) {
+  const out = [];
+  const rows = [];
+  let cur = '', row = [], inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i], n = text[i + 1];
+    if (inQ) {
+      if (c === '"' && n === '"') { cur += '"'; i++; }
+      else if (c === '"') inQ = false;
+      else cur += c;
+    } else {
+      if (c === '"') inQ = true;
+      else if (c === ',') { row.push(cur); cur = ''; }
+      else if (c === '\r') { /* skip */ }
+      else if (c === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+      else cur += c;
+    }
+  }
+  if (cur.length || row.length) { row.push(cur); rows.push(row); }
+  if (!rows.length) return out;
+  const headers = rows[0].map(h => h.trim().toLowerCase());
+  for (let r = 1; r < rows.length; r++) {
+    if (rows[r].every(v => v === '')) continue;
+    const obj = {};
+    for (let c = 0; c < headers.length; c++) obj[headers[c]] = (rows[r][c] || '').trim();
+    out.push(obj);
+  }
+  return out;
+}
+
+function pick(row, ...keys) {
+  for (const k of keys) {
+    const v = row[k.toLowerCase()];
+    if (v !== undefined && v !== '') return v;
+  }
+  return null;
+}
 
 async function notifyCustomerOnFulfill(hitt, leadCount) {
   if (!config.hitt.notifyCustomerOnFulfill) return;
@@ -859,5 +898,116 @@ export default async function adminRoutes(app) {
     if (!rows[0]) return reply.redirect('/admin/inbox?flash=missing');
     await markMessageRead(rows[0], id);
     return reply.redirect(`/admin/inbox?mailbox_id=${rows[0].mailbox_id}`);
+  });
+
+  // ---- Zapmail integration ---------------------------------------------------
+  app.get('/admin/zapmail', async (req, reply) => {
+    const configured = zapmail.isConfigured();
+    let remote = null, wallet = null, domains = null, err = null;
+    if (configured) {
+      try { remote = await zapmail.listMailboxes(); } catch (e) { err = e.message; }
+      try { wallet = await zapmail.getWalletBalance(); } catch {}
+      try { domains = await zapmail.listDomains(); } catch {}
+    }
+    const { rows: local } = await query(`
+      SELECT m.id, m.label, m.smtp_user, m.status, m.persona_id, m.zapmail_id,
+             p.display_name AS persona_name
+      FROM mailboxes m LEFT JOIN personas p ON p.id = m.persona_id
+      ORDER BY m.id
+    `);
+    return reply.view('admin/zapmail', {
+      user: req.user, configured, remote, wallet, domains, local,
+      flash: req.query.flash || null, flashErr: req.query.err || err || null,
+    });
+  });
+
+  app.post('/admin/zapmail/sync', async (req, reply) => {
+    if (!zapmail.isConfigured()) return reply.redirect('/admin/zapmail?flash=not_configured');
+    try {
+      const remote = await zapmail.listMailboxes();
+      const list = Array.isArray(remote) ? remote : (remote?.data || remote?.mailboxes || []);
+      let upserted = 0;
+      for (const mb of list) {
+        const email = mb.email || mb.username || mb.smtpUser;
+        if (!email) continue;
+        const zid = String(mb.id || mb._id || '');
+        const status = (mb.status || '').toLowerCase() === 'active' ? 'active' : 'paused';
+        // Match by email (smtp_user); update zapmail_id + remote status. Don't overwrite smtp_pass here.
+        const r = await query(
+          `UPDATE mailboxes SET zapmail_id = $1, label = COALESCE(NULLIF($2,''), label)
+             WHERE smtp_user = $3 RETURNING id`,
+          [zid, mb.label || `${email} (Zapmail)`, email]
+        );
+        if (r.rowCount === 0) {
+          await query(
+            `INSERT INTO mailboxes (owner_user_id, label, smtp_user, smtp_pass, daily_cap, status, zapmail_id)
+             VALUES ($1, $2, $3, 'PASTE_APP_PASSWORD', 50, 'paused', $4)`,
+            [req.session.userId, `${email} (Zapmail)`, email, zid]
+          );
+        }
+        upserted++;
+      }
+      return reply.redirect(`/admin/zapmail?flash=synced&n=${upserted}`);
+    } catch (e) {
+      const m = encodeURIComponent(String(e.message || e).slice(0, 240));
+      return reply.redirect(`/admin/zapmail?flash=sync_failed&err=${m}`);
+    }
+  });
+
+  app.post('/admin/zapmail/upload-csv', async (req, reply) => {
+    if (!req.isMultipart()) return reply.code(400).send('multipart required');
+    let csvText = null;
+    const parts = req.parts();
+    for await (const part of parts) {
+      if (part.type === 'file' && part.fieldname === 'csv') {
+        const chunks = [];
+        for await (const c of part.file) chunks.push(c);
+        csvText = Buffer.concat(chunks).toString('utf8');
+      }
+    }
+    if (!csvText) return reply.redirect('/admin/zapmail?flash=no_csv');
+
+    const rows = parseCsv(csvText);
+    let updated = 0, inserted = 0, skipped = 0;
+    for (const r of rows) {
+      const email = pick(r, 'email', 'smtp username', 'smtp_user', 'username');
+      const pass  = pick(r, 'app password', 'smtp password', 'password', 'smtp_pass');
+      const smtpHost = pick(r, 'smtp host', 'smtp_host') || 'smtp.gmail.com';
+      const smtpPort = Number(pick(r, 'smtp port', 'smtp_port') || 587);
+      const imapHost = pick(r, 'imap host', 'imap_host') || 'imap.gmail.com';
+      const imapPort = Number(pick(r, 'imap port', 'imap_port') || 993);
+      if (!email || !pass) { skipped++; continue; }
+      const cleanPass = pass.replace(/\s+/g, '');
+      const u = await query(
+        `UPDATE mailboxes
+           SET smtp_pass = $1, smtp_host = $2, smtp_port = $3,
+               imap_host = $4, imap_port = $5, status = 'active'
+           WHERE smtp_user = $6 RETURNING id`,
+        [cleanPass, smtpHost, smtpPort, imapHost, imapPort, email]
+      );
+      if (u.rowCount > 0) { updated++; clearTransport(u.rows[0].id); }
+      else {
+        await query(
+          `INSERT INTO mailboxes (owner_user_id, label, smtp_user, smtp_pass,
+                                  smtp_host, smtp_port, imap_host, imap_port, daily_cap, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 50, 'active')`,
+          [req.session.userId, `${email} (Zapmail)`, email, cleanPass, smtpHost, smtpPort, imapHost, imapPort]
+        );
+        inserted++;
+      }
+    }
+    return reply.redirect(`/admin/zapmail?flash=csv_imported&u=${updated}&i=${inserted}&s=${skipped}`);
+  });
+
+  app.post('/admin/zapmail/trigger-export', async (req, reply) => {
+    if (!zapmail.isConfigured()) return reply.redirect('/admin/zapmail?flash=not_configured');
+    try {
+      const r = await zapmail.triggerManualExport({ status: 'ACTIVE' });
+      const note = encodeURIComponent(JSON.stringify(r).slice(0, 240));
+      return reply.redirect(`/admin/zapmail?flash=export_triggered&err=${note}`);
+    } catch (e) {
+      const m = encodeURIComponent(String(e.message || e).slice(0, 240));
+      return reply.redirect(`/admin/zapmail?flash=export_failed&err=${m}`);
+    }
   });
 }

@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import fastifyCookie from '@fastify/cookie';
 import fastifySession from '@fastify/session';
 import fastifyFormbody from '@fastify/formbody';
+import fastifyMultipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import fastifyView from '@fastify/view';
 import ejs from 'ejs';
@@ -31,6 +32,10 @@ await app.register(fastifySession, {
   saveUninitialized: false,
 });
 await app.register(fastifyFormbody);
+await app.register(fastifyMultipart, {
+  limits: { fileSize: 8 * 1024 * 1024, files: 1, fields: 20 },
+  attachFieldsToBody: false,
+});
 await app.register(fastifyStatic, {
   root: path.join(__dirname, '..', 'public'),
   prefix: '/static/',
