@@ -37,7 +37,11 @@ export function requireAuth(req, reply, done) {
 }
 
 export function requireAdmin(req, reply, done) {
-  if (!req.session.userId || req.session.role !== 'admin') {
+  if (!req.session.userId) {
+    reply.redirect('/login?next=' + encodeURIComponent(req.url));
+    return;
+  }
+  if (req.session.role !== 'admin') {
     reply.code(403).send('Forbidden');
     return;
   }
