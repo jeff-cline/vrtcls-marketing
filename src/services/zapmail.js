@@ -36,6 +36,32 @@ export function isConfigured() {
 }
 
 export async function listMailboxes(query = {}) {
+  // /v2/mailboxes currently returns 500 on Zapmail's side (as of Apr 2026).
+  // Domains endpoint embeds the full mailbox list, so derive from there.
+  const d = await call('/v2/domains', { query });
+  const domains = d?.data?.domains || d?.domains || [];
+  const out = [];
+  for (const dom of domains) {
+    const list = dom.mailboxes || [];
+    for (const m of list) {
+      const email = m.username && dom.domain ? `${m.username}@${dom.domain}` : m.email;
+      out.push({
+        id: m.id,
+        email,
+        username: m.username,
+        domain: dom.domain,
+        domainId: dom.id,
+        firstName: m.firstName,
+        lastName: m.lastName,
+        status: m.status,
+        createdAt: m.createdAt,
+      });
+    }
+  }
+  return out;
+}
+
+export async function listMailboxesRaw(query = {}) {
   return call('/v2/mailboxes', { query });
 }
 
