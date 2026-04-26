@@ -23,6 +23,12 @@ export const config = {
     replyTo: process.env.EMAIL_REPLY_TO || 'hello@vrtcls.marketing',
   },
   companyAddress: process.env.COMPANY_ADDRESS || 'vrtcls, PO Box XXX, City, ST 00000',
+  hitt: {
+    autoBakeEnabled: process.env.AUTO_BAKE_ENABLED === 'true',
+    notifyAdminOnNew: process.env.ADMIN_NOTIFY_ON_HITT !== 'false', // default ON
+    notifyCustomerOnFulfill: process.env.CUSTOMER_NOTIFY_ON_FULFILL !== 'false', // default ON
+    adminNotifyEmail: process.env.ADMIN_NOTIFY_EMAIL || process.env.ADMIN_EMAIL,
+  },
 };
 
 export const isProd = config.env === 'production';

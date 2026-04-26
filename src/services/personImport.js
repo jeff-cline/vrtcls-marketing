@@ -52,7 +52,7 @@ function flatten(p) {
   };
 }
 
-export async function ingestPersons({ hittId, persons, workflowId, toolTraceId, label, importedBy }) {
+export async function ingestPersons({ hittId, persons, workflowId, toolTraceId, label, importedBy, addToAdminPool }) {
   return tx(async (client) => {
     const { rows: aud } = await client.query(
       `INSERT INTO audiences (workflow_id, tool_trace_id, total_count, imported_by, hitt_request_id)
@@ -62,6 +62,7 @@ export async function ingestPersons({ hittId, persons, workflowId, toolTraceId, 
     const audienceId = aud[0].id;
     let inserted = 0;
     const tag = (label || `hitt_${hittId}`).toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+    const adminTag = addToAdminPool ? 'admin_pool' : null;
 
     for (const raw of persons) {
       const p = flatten(raw);
@@ -98,6 +99,13 @@ export async function ingestPersons({ hittId, persons, workflowId, toolTraceId, 
           `INSERT INTO lead_tags (lead_id, tag, source) VALUES ($1, $2, $3)
            ON CONFLICT (lead_id, tag) DO NOTHING`,
           [leadId, tag, `hitt:${hittId}`]
+        );
+      }
+      if (adminTag) {
+        await client.query(
+          `INSERT INTO lead_tags (lead_id, tag, source) VALUES ($1, $2, $3)
+           ON CONFLICT (lead_id, tag) DO NOTHING`,
+          [leadId, adminTag, `hitt:${hittId}`]
         );
       }
     }

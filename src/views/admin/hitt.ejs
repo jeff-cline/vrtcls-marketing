@@ -1,63 +1,136 @@
-<h1 class="fw-bold mb-3">HITT Queue</h1>
-<p class="text-secondary">Pending HITT requests across all users. Fulfill by pasting the MCP <code>find_persons</code> JSON output.</p>
+<h1 class="fw-bold mb-2">Customer Requests</h1>
+<p class="text-secondary mb-3">
+  Each pending HITT is one customer waiting on you. Click <strong>Copy Prompt</strong>,
+  paste it into your claude.ai chat with the WattData connector, then paste the JSON
+  result back here and click <strong>Fulfill</strong>.
+</p>
 
-<% hitts.forEach(function(h) { %>
-  <details class="bg-white p-3 border rounded mb-3" <%= (h.status === 'baking' || h.status === 'queued') ? 'open' : '' %>>
-    <summary>
-      <span class="fw-bold fs-5"><%= h.label %></span>
-      <span class="text-muted">— <%= h.user_email %></span>
-      <span class="ms-2">
-        <% if (h.status === 'baking' || h.status === 'queued') { %>
-          <span class="badge bg-warning text-dark"><span class="hitt-pulse">●</span> <%= h.status %></span>
-        <% } else if (h.status === 'complete') { %>
-          <span class="badge bg-success">complete · <%= h.result_count || 0 %></span>
-        <% } else { %>
-          <span class="badge bg-secondary"><%= h.status %></span>
-        <% } %>
-      </span>
-      <span class="text-muted small ms-2"><%= new Date(h.created_at).toLocaleString() %></span>
-    </summary>
+<% const pending = hitts.filter(h => h.status === 'queued' || h.status === 'baking'); %>
+<% const recent  = hitts.filter(h => h.status === 'complete' || h.status === 'failed'); %>
 
-    <div class="row mt-3">
-      <div class="col-md-5">
-        <div class="bg-light p-3 rounded">
-          <div><strong>Prompt:</strong> <%= h.prompt %></div>
-          <div class="mt-1"><strong>Geo:</strong> <%= h.city || '—' %><%= h.state ? ', '+h.state : '' %> · <%= h.radius_miles %> mi radius</div>
-          <div><strong>Limit:</strong> <%= h.audience_limit %></div>
-          <% if (h.audience_id) { %><div><strong>Audience:</strong> #<%= h.audience_id %> (<%= h.lead_count %> leads)</div><% } %>
-        </div>
-        <div class="bg-light p-3 rounded mt-2 small">
-          <div class="fw-bold mb-1">Run in Claude Code:</div>
-          <pre class="mb-0">Use HighIntentTargets MCP. build_cluster_expression for prompt:
-"<%= h.prompt %>"
-Then find_persons with that expression,
-location <%= h.city || '<lat>' %>, radius <%= h.radius_miles %> miles,
-audience_limit <%= h.audience_limit %>, format=json,
-identifier_types=[email,phone,name,address].
-Return the persons array.</pre>
-        </div>
+<div class="d-flex gap-2 mb-3">
+  <span class="badge bg-warning text-dark fs-6 px-3 py-2"><%= pending.length %> pending</span>
+  <span class="badge bg-light text-dark fs-6 px-3 py-2 border"><%= recent.length %> recent</span>
+</div>
+
+<% if (!pending.length) { %>
+  <div class="alert alert-success">No customer requests waiting. You're caught up.</div>
+<% } %>
+
+<% pending.forEach(function(h) { %>
+  <div class="card mb-3 border-warning">
+    <div class="card-header bg-warning bg-opacity-25 d-flex justify-content-between align-items-center">
+      <div>
+        <span class="fw-bold fs-5"><%= h.label %></span>
+        <span class="text-muted ms-2">— <%= h.user_email %></span>
       </div>
-
-      <div class="col-md-7">
-        <% if (h.status !== 'complete' && h.status !== 'failed') { %>
-          <form method="post" action="/admin/hitt/<%= h.id %>/fulfill">
-            <label class="form-label fw-bold">Persons JSON</label>
-            <textarea name="persons" class="form-control font-monospace" rows="10" placeholder='[{"person_id":"...","email":"...",...}] or {"persons":[...]}'></textarea>
-            <div class="d-flex gap-2 mt-2">
-              <button class="btn btn-warning fw-bold">Fulfill HITT</button>
-              <button type="button" class="btn btn-outline-danger" onclick="this.closest('form').action='/admin/hitt/<%= h.id %>/fail'; this.closest('form').submit();">Mark failed</button>
-            </div>
-          </form>
-        <% } else if (h.status === 'complete') { %>
-          <div class="alert alert-success mb-0">Fulfilled · <%= h.result_count %> leads delivered.</div>
-        <% } else { %>
-          <div class="alert alert-warning mb-0">Failed. Notes: <%= h.notes || '—' %></div>
-        <% } %>
+      <div class="text-muted small">
+        Submitted <%= new Date(h.created_at).toLocaleString() %>
       </div>
     </div>
-  </details>
+
+    <div class="card-body">
+      <div class="row">
+        <div class="col-md-5">
+          <div class="mb-2"><strong>Geo:</strong>
+            <%= h.city || 'national' %><%= h.state ? ', '+h.state : '' %>
+            · <%= h.radius_miles %> mi
+          </div>
+          <div class="mb-3"><strong>Audience size:</strong> up to <%= h.audience_limit %> people</div>
+
+          <label class="form-label fw-bold mb-1">Prompt to paste into claude.ai:</label>
+          <textarea id="prompt-<%= h.id %>" class="form-control font-monospace mb-2" rows="6" readonly>Use the HighIntentTargets MCP connector.
+
+1. Call build_cluster_expression with this prompt:
+"<%= h.prompt %>"
+
+2. Call find_persons with that expression, location <%= h.city || '<lat,lng>' %><%= h.state ? ', '+h.state : '' %>, radius <%= h.radius_miles %> miles, audience_limit <%= h.audience_limit %>, format=json, identifier_types=[email,phone,name,address].
+
+3. Return the persons array as raw JSON.</textarea>
+          <button type="button" class="btn btn-dark btn-sm" onclick="copyPrompt(<%= h.id %>, this)">
+            Copy Prompt
+          </button>
+        </div>
+
+        <div class="col-md-7">
+          <form method="post" action="/admin/hitt/<%= h.id %>/fulfill">
+            <label class="form-label fw-bold">Persons JSON from Claude</label>
+            <textarea name="persons" class="form-control font-monospace" rows="10"
+              placeholder='Paste the persons array here. Either [{"person_id":"..."}] or {"persons":[...]}'
+              required></textarea>
+
+            <div class="form-check mt-3">
+              <input class="form-check-input" type="checkbox" name="add_to_admin" value="1"
+                id="addadmin-<%= h.id %>" checked>
+              <label class="form-check-label" for="addadmin-<%= h.id %>">
+                Also add these leads to my admin pool (so I can email them too)
+              </label>
+            </div>
+
+            <div class="d-flex gap-2 mt-3">
+              <button class="btn btn-warning fw-bold">Fulfill HITT</button>
+              <button type="button" class="btn btn-outline-danger"
+                onclick="markFailed(<%= h.id %>, this.form)">Mark failed</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
 <% }) %>
 
-<% if (!hitts.length) { %>
-  <div class="alert alert-info">No HITT requests yet.</div>
+<% if (recent.length) { %>
+  <h2 class="h5 fw-bold mt-5 mb-2">Recent</h2>
+  <div class="bg-white border rounded">
+    <% recent.slice(0, 25).forEach(function(h) { %>
+      <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
+        <div>
+          <span class="fw-bold"><%= h.label %></span>
+          <span class="text-muted small ms-2"><%= h.user_email %></span>
+        </div>
+        <div>
+          <% if (h.status === 'complete') { %>
+            <span class="badge bg-success">complete · <%= h.result_count || 0 %> leads</span>
+          <% } else { %>
+            <span class="badge bg-secondary" title="<%= h.notes || '' %>">failed</span>
+          <% } %>
+          <span class="text-muted small ms-2">
+            <%= new Date(h.completed_at || h.created_at).toLocaleString() %>
+          </span>
+        </div>
+      </div>
+    <% }) %>
+  </div>
 <% } %>
+
+<script>
+function copyPrompt(id, btn) {
+  const ta = document.getElementById('prompt-' + id);
+  ta.select();
+  document.execCommand('copy');
+  navigator.clipboard && navigator.clipboard.writeText(ta.value);
+  const orig = btn.textContent;
+  btn.textContent = 'Copied!';
+  btn.classList.remove('btn-dark');
+  btn.classList.add('btn-success');
+  setTimeout(function () {
+    btn.textContent = orig;
+    btn.classList.remove('btn-success');
+    btn.classList.add('btn-dark');
+  }, 1500);
+}
+function markFailed(id, form) {
+  if (!confirm('Mark this HITT as failed? The customer will be notified.')) return;
+  const note = prompt('Optional note for the customer (or leave blank):') || '';
+  form.action = '/admin/hitt/' + id + '/fail';
+  let n = form.querySelector('input[name="note"]');
+  if (!n) {
+    n = document.createElement('input');
+    n.type = 'hidden';
+    n.name = 'note';
+    form.appendChild(n);
+  }
+  n.value = note;
+  form.submit();
+}
+</script>

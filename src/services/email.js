@@ -6,6 +6,31 @@ import { consumeToken } from './credits.js';
 
 const resend = config.email.resendKey ? new Resend(config.email.resendKey) : null;
 
+// Plain transactional send — for admin pings and customer "your leads are ready"
+// notifications. No tracking pixels, no link rewriting, no CAN-SPAM footer
+// (these are 1:1 service emails, not marketing).
+export async function sendTransactional({ to, subject, html, text }) {
+  if (!to) return { skipped: 'no_recipient' };
+  if (!resend) {
+    console.log(`[email:dev] would send "${subject}" to ${to}`);
+    return { dev: true };
+  }
+  try {
+    const resp = await resend.emails.send({
+      from: config.email.from,
+      to,
+      reply_to: config.email.replyTo,
+      subject,
+      html: html || `<pre>${text || ''}</pre>`,
+      text: text || undefined,
+    });
+    return { id: resp.data?.id || null };
+  } catch (err) {
+    console.warn(`[email] transactional send failed for ${to}: ${err.message || err}`);
+    return { error: String(err.message || err) };
+  }
+}
+
 export async function renderEmail({ template, lead, sendId }) {
   const vars = {
     first_name: lead.first_name || 'there',

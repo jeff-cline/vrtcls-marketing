@@ -78,10 +78,20 @@ pm2 startup systemd   # follow the output instructions
 pm2 save
 ```
 
-The worker (`vrtcls-worker`) polls every ~12s for HITT requests in `queued`
-or `baking` status, calls WattData over HTTP MCP, ingests the persons array,
-and flips the row to `complete`. No human intervention needed once
-`WATTDATA_API_KEY` is set.
+**HITT fulfillment** — by default vrtcls runs in **manual mode**:
+- A user submits a HITT → admin gets an email ping → admin opens `/admin/hitt`,
+  hits **Copy Prompt**, pastes into a claude.ai chat with the WattData
+  connector, then pastes the JSON result back and clicks **Fulfill**.
+- The customer is auto-emailed "your leads are ready" the moment you fulfill.
+
+**To upgrade to fully-automatic** any time later:
+1. Get a WattData API key from https://wattdata.ai/dashboard/api-keys
+2. In `.env`, set: `AUTO_BAKE_ENABLED=true` and `WATTDATA_API_KEY=watt_...`
+3. `pm2 reload ecosystem.config.cjs` (or restart `vrtcls-worker`)
+
+The worker process polls every ~12s, claims queued HITTs, calls WattData over
+HTTP MCP, ingests persons, and flips status to `complete` — no admin in the
+loop. Manual `/admin/hitt` always remains as a fallback.
 
 To redeploy after pulling new code:
 
@@ -132,13 +142,29 @@ Paste one real lead via `/admin/import`, buy it as a user, send a test. Check:
 - `mail-tester.com` score
 - Resend dashboard shows delivery
 
-## 9. First lead pull (fully automated)
+## 9. First lead pull (manual mode — default)
 
-A user submits a HITT from `/app` → row inserted with `status='baking'` →
-the `vrtcls-worker` process picks it up within ~12s, calls WattData via
-MCP-over-HTTP, and ingests the persons. The bake page polls
-`/app/hitt/:id/status` every 5s and auto-redirects to `/app/leads?hitt_id=N`
-when done.
+1. A user submits a HITT from `/app` → row inserted with `status='queued'`.
+2. You (admin) get an email at `ADMIN_EMAIL` saying "new request from X".
+3. Open `https://vrtcls.marketing/admin/hitt`. Each pending request shows a
+   **Copy Prompt** button. Click it, switch to claude.ai (with the WattData
+   connector authorized), paste the prompt, hit Enter.
+4. Claude returns the persons array. Copy it.
+5. Back on `/admin/hitt`, paste into the **Persons JSON** box. Leave the
+   "Also add to my admin pool" checkbox on. Click **Fulfill HITT**.
+6. The customer is auto-emailed "your leads are ready" with a link to
+   `/app/leads?hitt_id=N`. Their bake page also auto-redirects on its next poll.
+
+If you can't fulfill (Claude returned nothing, prompt was junk), click
+**Mark failed** with an optional note — the customer is emailed too.
+
+## 9b. First lead pull (auto mode — once you have a WattData key)
+
+Set `AUTO_BAKE_ENABLED=true` and `WATTDATA_API_KEY=watt_...` in `.env`,
+restart the worker. From then on, queued HITTs are picked up within ~12s,
+WattData is called over MCP-over-HTTP, persons are ingested, and the bake
+page auto-redirects when complete — no admin in the loop. Manual
+`/admin/hitt` always remains available as a fallback.
 
 To watch the worker live:
 
@@ -146,11 +172,8 @@ To watch the worker live:
 pm2 logs vrtcls-worker
 ```
 
-If a HITT marks `failed`, check the `notes` column in `hitt_requests` —
-that's the error message from WattData / geocoding / etc.
-
-Manual fulfillment (admin paste-JSON at `/admin/hitt`) is still wired up
-as a fallback for HITTs that fail the auto path.
+If a HITT marks `failed` in auto mode, check the `notes` column in
+`hitt_requests` — that's the error message from WattData / geocoding / etc.
 
 ## Next hardening steps (post-launch)
 

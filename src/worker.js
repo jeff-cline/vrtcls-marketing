@@ -136,16 +136,25 @@ async function tick() {
   }
 }
 
+const AUTO_BAKE_ENABLED = process.env.AUTO_BAKE_ENABLED === 'true';
+const HAS_WATTDATA_KEY = !!process.env.WATTDATA_API_KEY;
+
 console.log(`[worker] starting · poll=${POLL_MS}ms · stale=${STALE_MIN}min`);
-if (!process.env.WATTDATA_API_KEY) {
-  console.warn('[worker] WATTDATA_API_KEY is NOT set — worker will fail every HITT until you add it.');
+console.log(`[worker] AUTO_BAKE_ENABLED=${AUTO_BAKE_ENABLED} · WATTDATA_API_KEY=${HAS_WATTDATA_KEY ? 'set' : 'MISSING'}`);
+
+if (!AUTO_BAKE_ENABLED) {
+  console.log('[worker] auto-bake is OFF — HITTs will be fulfilled manually via /admin/hitt. Process staying alive idle (set AUTO_BAKE_ENABLED=true + WATTDATA_API_KEY=watt_... to enable).');
+} else if (!HAS_WATTDATA_KEY) {
+  console.warn('[worker] AUTO_BAKE_ENABLED=true but WATTDATA_API_KEY is missing — refusing to claim HITTs (would fail every one). Add the key or flip AUTO_BAKE_ENABLED=false.');
 }
-const handle = setInterval(tick, POLL_MS);
-tick();
+
+const shouldRun = AUTO_BAKE_ENABLED && HAS_WATTDATA_KEY;
+const handle = shouldRun ? setInterval(tick, POLL_MS) : null;
+if (shouldRun) tick();
 
 function shutdown(sig) {
   console.log(`[worker] ${sig} received, shutting down`);
-  clearInterval(handle);
+  if (handle) clearInterval(handle);
   pool.end().finally(() => process.exit(0));
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));

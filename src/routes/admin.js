@@ -1,8 +1,47 @@
 import { query, tx } from '../db.js';
 import { requireAdmin, findUserById } from '../auth.js';
 import { grantCredits, grantTokens } from '../services/credits.js';
-import { sendOne } from '../services/email.js';
+import { sendOne, sendTransactional } from '../services/email.js';
 import { ingestPersons } from '../services/personImport.js';
+import { config } from '../config.js';
+
+async function notifyCustomerOnFulfill(hitt, leadCount) {
+  if (!config.hitt.notifyCustomerOnFulfill) return;
+  const { rows } = await query('SELECT email FROM users WHERE id = $1', [hitt.user_id]);
+  const to = rows[0]?.email;
+  if (!to) return;
+  const subject = `Your HITT is ready — ${leadCount} leads`;
+  const html = `
+    <h2>Your leads are ready</h2>
+    <p>"<strong>${hitt.label}</strong>" — we found <strong>${leadCount}</strong> people that matched.</p>
+    <p>
+      <a href="${config.baseUrl}/app/leads?hitt_id=${hitt.id}"
+         style="display:inline-block;padding:12px 22px;background:#ffc107;color:#000;text-decoration:none;border-radius:4px;font-weight:bold">
+        Open my leads
+      </a>
+    </p>
+    <p style="color:#666;font-size:12px">
+      Leads are tiered by intent freshness — the fresher the more you can charge.
+      Compose a campaign and start sending while the intent is hot.
+    </p>
+  `;
+  await sendTransactional({ to, subject, html });
+}
+
+async function notifyCustomerOnFail(hitt, note) {
+  if (!config.hitt.notifyCustomerOnFulfill) return;
+  const { rows } = await query('SELECT email FROM users WHERE id = $1', [hitt.user_id]);
+  const to = rows[0]?.email;
+  if (!to) return;
+  const subject = `Your HITT request couldn't be fulfilled`;
+  const html = `
+    <h2>We couldn't fulfill your HITT</h2>
+    <p>"<strong>${hitt.label}</strong>"</p>
+    ${note ? `<p><strong>Note:</strong> ${note}</p>` : ''}
+    <p>You haven't been charged. Please reply to this email or submit a new request and we'll dig in.</p>
+  `;
+  await sendTransactional({ to, subject, html });
+}
 
 // Admin gate that ALSO permits sessions where the active user is impersonated
 // (we keep the original admin id in session.realAdminId).
@@ -199,14 +238,21 @@ export default async function adminRoutes(app) {
     const hitt = hRows[0];
     if (!hitt) return reply.code(404).send('Not found');
 
+    const addToAdminPool = body.add_to_admin === '1' || body.add_to_admin === 'on' || body.add_to_admin === true;
+
     const result = await ingestPersons({
       hittId,
       persons,
       workflowId: body.workflow_id,
       toolTraceId: body.tool_trace_id,
       label: hitt.label,
-      importedBy: req.user.id
+      importedBy: req.user.id,
+      addToAdminPool,
     });
+
+    notifyCustomerOnFulfill(hitt, result.total).catch((err) =>
+      req.log.warn({ err }, 'customer notify failed')
+    );
 
     return reply.redirect(`/admin/hitt?fulfilled=${hittId}&n=${result.total}`);
   });
@@ -214,10 +260,15 @@ export default async function adminRoutes(app) {
   app.post('/admin/hitt/:id/fail', async (req, reply) => {
     const hittId = Number(req.params.id);
     const note = (req.body.note || '').slice(0, 500);
-    await query(
-      `UPDATE hitt_requests SET status='failed', notes=$1, completed_at=NOW() WHERE id=$2`,
+    const { rows } = await query(
+      `UPDATE hitt_requests SET status='failed', notes=$1, completed_at=NOW() WHERE id=$2 RETURNING *`,
       [note, hittId]
     );
+    if (rows[0]) {
+      notifyCustomerOnFail(rows[0], note).catch((err) =>
+        req.log.warn({ err }, 'customer fail notify failed')
+      );
+    }
     return reply.redirect('/admin/hitt');
   });
 

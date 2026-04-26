@@ -1,10 +1,34 @@
 import { query } from '../db.js';
 import { requireAuth } from '../auth.js';
+import { config } from '../config.js';
+import { sendTransactional } from '../services/email.js';
+
+async function pingAdminOnNewHitt(hitt, userEmail) {
+  if (!config.hitt.notifyAdminOnNew) return;
+  if (!config.hitt.adminNotifyEmail) return;
+  const subject = `New HITT request from ${userEmail} — "${hitt.label}"`;
+  const html = `
+    <h2>New customer request</h2>
+    <p><strong>Customer:</strong> ${userEmail}</p>
+    <p><strong>Label:</strong> ${hitt.label}</p>
+    <p><strong>Prompt:</strong> ${hitt.prompt}</p>
+    <p><strong>Geo:</strong> ${hitt.city || 'national'}${hitt.state ? ', ' + hitt.state : ''} · ${hitt.radius_miles} mi · up to ${hitt.audience_limit} people</p>
+    <p>
+      <a href="${config.baseUrl}/admin/hitt"
+         style="display:inline-block;padding:10px 18px;background:#ffc107;color:#000;text-decoration:none;border-radius:4px;font-weight:bold">
+        Open Customer Requests
+      </a>
+    </p>
+  `;
+  await sendTransactional({ to: config.hitt.adminNotifyEmail, subject, html });
+}
 
 export default async function hittRoutes(app) {
   app.addHook('preHandler', requireAuth);
 
-  // Submit a new HITT request → kicks off baking experience
+  // Submit a new HITT request. With auto-bake disabled (default), this stays
+  // in 'queued' until an admin fulfills via /admin/hitt. With auto-bake
+  // enabled and WATTDATA_API_KEY set, the worker picks it up.
   app.post('/app/hitt', async (req, reply) => {
     const label = (req.body.label || '').trim().slice(0, 200);
     const prompt = (req.body.prompt || '').trim().slice(0, 1000);
@@ -16,13 +40,19 @@ export default async function hittRoutes(app) {
 
     if (!label || !prompt) return reply.redirect('/app?hitt_error=missing');
 
+    const initialStatus = config.hitt.autoBakeEnabled ? 'baking' : 'queued';
     const { rows } = await query(
       `INSERT INTO hitt_requests
          (user_id, label, prompt, city, state, zip, radius_miles, audience_limit, status, started_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'baking', NOW())
-       RETURNING id`,
-      [req.user.id, label, prompt, city, state, zip, radiusMiles, audienceLimit]
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, CASE WHEN $9='baking' THEN NOW() ELSE NULL END)
+       RETURNING *`,
+      [req.user.id, label, prompt, city, state, zip, radiusMiles, audienceLimit, initialStatus]
     );
+
+    pingAdminOnNewHitt(rows[0], req.user.email).catch((err) =>
+      req.log.warn({ err }, 'admin notify failed')
+    );
+
     return reply.redirect(`/app/hitt/${rows[0].id}`);
   });
 
