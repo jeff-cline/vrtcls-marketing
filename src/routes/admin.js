@@ -4,6 +4,7 @@ import { grantCredits, grantTokens } from '../services/credits.js';
 import { sendOne, sendTransactional, sendTestToSelf } from '../services/email.js';
 import { ingestPersons } from '../services/personImport.js';
 import { verifyMailbox, sendViaMailbox, clearTransport } from '../services/smtpSender.js';
+import { syncMailboxInbox, markMessageRead } from '../services/imapReader.js';
 import { config } from '../config.js';
 
 async function notifyCustomerOnFulfill(hitt, leadCount) {
@@ -731,5 +732,132 @@ export default async function adminRoutes(app) {
       const msg = encodeURIComponent(String(err.message || err).slice(0, 200));
       return reply.redirect(`/admin/templates?flash=test_failed&err=${msg}`);
     }
+  });
+
+  // ==========================================================================
+  // Inbox — unified read + reply across every persona's Gmail seat (IMAP).
+  // ==========================================================================
+
+  app.get('/admin/inbox', async (req, reply) => {
+    const { rows: mailboxes } = await query(`
+      SELECT m.id, m.label, m.smtp_user, m.inbox_last_synced, m.status,
+             p.display_name AS persona_name, p.avatar_url,
+             (SELECT COUNT(*)::int FROM inbox_messages im WHERE im.mailbox_id=m.id) AS total,
+             (SELECT COUNT(*)::int FROM inbox_messages im WHERE im.mailbox_id=m.id AND im.read_at IS NULL) AS unread
+        FROM mailboxes m LEFT JOIN personas p ON p.id = m.persona_id
+       ORDER BY p.display_name NULLS LAST, m.label
+    `);
+    const activeId = req.query.mailbox_id ? Number(req.query.mailbox_id) : (mailboxes[0]?.id || null);
+    let messages = [];
+    let activeMailbox = null;
+    if (activeId) {
+      activeMailbox = mailboxes.find((m) => m.id === activeId) || null;
+      const { rows } = await query(`
+        SELECT id, from_address, from_name, subject, snippet,
+               received_at, read_at, replied_at
+          FROM inbox_messages
+         WHERE mailbox_id = $1
+         ORDER BY received_at DESC
+         LIMIT 200
+      `, [activeId]);
+      messages = rows;
+    }
+    return reply.view('admin/inbox', {
+      user: req.user,
+      mailboxes,
+      activeMailbox,
+      messages,
+      flash: req.query.flash || null,
+      flashErr: req.query.err || null,
+    });
+  });
+
+  app.post('/admin/inbox/:mailboxId/refresh', async (req, reply) => {
+    const id = Number(req.params.mailboxId);
+    const { rows } = await query('SELECT * FROM mailboxes WHERE id=$1', [id]);
+    const mailbox = rows[0];
+    if (!mailbox) return reply.redirect('/admin/inbox?flash=missing');
+    try {
+      const { fetched, inserted } = await syncMailboxInbox(mailbox);
+      return reply.redirect(`/admin/inbox?mailbox_id=${id}&flash=synced_${fetched}_${inserted}`);
+    } catch (err) {
+      const msg = encodeURIComponent(String(err.message || err).slice(0, 200));
+      return reply.redirect(`/admin/inbox?mailbox_id=${id}&flash=sync_failed&err=${msg}`);
+    }
+  });
+
+  app.get('/admin/inbox/messages/:id', async (req, reply) => {
+    const id = Number(req.params.id);
+    const { rows } = await query(`
+      SELECT im.*, m.label AS mailbox_label, m.smtp_user, m.id AS mailbox_id,
+             p.display_name AS persona_name, p.signature_html AS persona_signature
+        FROM inbox_messages im
+        JOIN mailboxes m ON m.id = im.mailbox_id
+        LEFT JOIN personas p ON p.id = m.persona_id
+       WHERE im.id = $1
+    `, [id]);
+    const message = rows[0];
+    if (!message) return reply.code(404).send('Not found');
+    if (!message.read_at) {
+      const { rows: mb } = await query('SELECT * FROM mailboxes WHERE id=$1', [message.mailbox_id]);
+      markMessageRead(mb[0], id).catch(() => {});
+    }
+    return reply.view('admin/inbox_message', {
+      user: req.user,
+      message,
+      flash: req.query.flash || null,
+      flashErr: req.query.err || null,
+    });
+  });
+
+  app.post('/admin/inbox/messages/:id/reply', async (req, reply) => {
+    const id = Number(req.params.id);
+    const { rows: msgRows } = await query(`
+      SELECT im.*, m.* , m.id AS mailbox_id_real
+        FROM inbox_messages im JOIN mailboxes m ON m.id = im.mailbox_id
+       WHERE im.id = $1
+    `, [id]);
+    const r = msgRows[0];
+    if (!r) return reply.code(404).send('Not found');
+
+    const subject = (req.body.subject || `Re: ${r.subject || ''}`).slice(0, 400);
+    const bodyHtml = String(req.body.body_html || '').slice(0, 200000);
+    const to = r.from_address;
+    if (!to) return reply.redirect(`/admin/inbox/messages/${id}?flash=no_from`);
+
+    const mailbox = {
+      id: r.mailbox_id_real, smtp_user: r.smtp_user, smtp_pass: r.smtp_pass,
+      smtp_host: r.smtp_host, smtp_port: r.smtp_port, smtp_secure: r.smtp_secure,
+      daily_cap: r.daily_cap, sends_today: r.sends_today, last_send_at: r.last_send_at,
+      status: r.status,
+      // For the From-name on the reply, the sendViaMailbox helper looks at persona_name.
+      persona_name: (await query('SELECT display_name FROM personas WHERE id=$1', [r.persona_id])).rows[0]?.display_name || null,
+    };
+
+    const headers = {};
+    if (r.message_id) {
+      headers['In-Reply-To'] = r.message_id;
+      headers['References'] = r.message_id;
+    }
+
+    try {
+      await sendViaMailbox({ mailbox, to, subject, html: bodyHtml, headers });
+      await query(`UPDATE inbox_messages SET replied_at = NOW() WHERE id=$1`, [id]);
+      return reply.redirect(`/admin/inbox/messages/${id}?flash=replied`);
+    } catch (err) {
+      const m = encodeURIComponent(String(err.message || err).slice(0, 200));
+      return reply.redirect(`/admin/inbox/messages/${id}?flash=reply_failed&err=${m}`);
+    }
+  });
+
+  app.post('/admin/inbox/messages/:id/read', async (req, reply) => {
+    const id = Number(req.params.id);
+    const { rows } = await query(`
+      SELECT im.id, im.mailbox_id, m.* FROM inbox_messages im
+        JOIN mailboxes m ON m.id = im.mailbox_id WHERE im.id = $1
+    `, [id]);
+    if (!rows[0]) return reply.redirect('/admin/inbox?flash=missing');
+    await markMessageRead(rows[0], id);
+    return reply.redirect(`/admin/inbox?mailbox_id=${rows[0].mailbox_id}`);
   });
 }

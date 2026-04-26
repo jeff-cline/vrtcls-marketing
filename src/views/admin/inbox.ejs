@@ -1,0 +1,97 @@
+<h1 class="fw-bold mb-3">Inbox</h1>
+<p class="text-muted">
+  Read and reply to messages received at every persona's mailbox. Reads pull
+  directly from each Gmail seat over IMAP using the same App Password as your
+  SMTP sender. Replies go out from the same persona, with proper threading.
+</p>
+
+<% if (flash) { %>
+  <div class="alert alert-info py-2 small"><%= flash %><% if (flashErr) { %> — <%= flashErr %><% } %></div>
+<% } %>
+
+<% if (mailboxes.length === 0) { %>
+  <div class="alert alert-warning">No mailboxes provisioned yet. Add one under <a href="/admin/mailboxes">Mailboxes</a> first.</div>
+<% } %>
+
+<div class="row g-3">
+  <div class="col-md-3">
+    <div class="bg-white border rounded p-2">
+      <h6 class="fw-bold px-2 mt-1 mb-2">Personas</h6>
+      <div class="list-group list-group-flush">
+        <% mailboxes.forEach(function(m) { %>
+          <a href="/admin/inbox?mailbox_id=<%= m.id %>"
+             class="list-group-item list-group-item-action <%= activeMailbox && activeMailbox.id === m.id ? 'active' : '' %>">
+            <div class="d-flex align-items-center gap-2">
+              <% if (m.avatar_url) { %>
+                <img src="<%= m.avatar_url %>" style="width:32px;height:32px;object-fit:cover;border-radius:50%;" alt="">
+              <% } else { %>
+                <div style="width:32px;height:32px;background:#e9ecef;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#666;">
+                  <%= (m.persona_name || m.label || '?').charAt(0).toUpperCase() %>
+                </div>
+              <% } %>
+              <div class="flex-grow-1">
+                <div class="fw-bold small"><%= m.persona_name || m.label %></div>
+                <div class="text-muted" style="font-size:11px;"><%= m.smtp_user %></div>
+              </div>
+              <% if (m.unread > 0) { %>
+                <span class="badge bg-warning text-dark"><%= m.unread %></span>
+              <% } %>
+            </div>
+          </a>
+        <% }) %>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-9">
+    <% if (activeMailbox) { %>
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div>
+          <strong><%= activeMailbox.persona_name || activeMailbox.label %></strong>
+          <span class="text-muted small">· <%= activeMailbox.smtp_user %></span>
+          <% if (activeMailbox.inbox_last_synced) { %>
+            <span class="text-muted small">· last synced <%= new Date(activeMailbox.inbox_last_synced).toLocaleString() %></span>
+          <% } else { %>
+            <span class="text-muted small">· never synced</span>
+          <% } %>
+        </div>
+        <form method="post" action="/admin/inbox/<%= activeMailbox.id %>/refresh" class="m-0">
+          <button class="btn btn-warning fw-bold btn-sm">Refresh inbox ↻</button>
+        </form>
+      </div>
+
+      <div class="bg-white border rounded">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr><th style="width:30%;">From</th><th>Subject</th><th class="text-end" style="width:20%;">Received</th></tr>
+          </thead>
+          <tbody>
+            <% messages.forEach(function(m) { %>
+              <tr class="<%= m.read_at ? '' : 'fw-bold' %>" style="cursor:pointer;" onclick="location.href='/admin/inbox/messages/<%= m.id %>'">
+                <td>
+                  <%= m.from_name || m.from_address %>
+                  <% if (m.from_name) { %><div class="text-muted small fw-normal"><%= m.from_address %></div><% } %>
+                </td>
+                <td>
+                  <%= m.subject || '(no subject)' %>
+                  <% if (m.replied_at) { %><span class="badge bg-success ms-2">replied</span><% } %>
+                  <div class="text-muted small fw-normal"><%= m.snippet || '' %></div>
+                </td>
+                <td class="text-end small text-muted">
+                  <%= m.received_at ? new Date(m.received_at).toLocaleString() : '—' %>
+                </td>
+              </tr>
+            <% }) %>
+            <% if (!messages.length) { %>
+              <tr><td colspan="3" class="text-muted text-center py-4">
+                No messages yet. Click <strong>Refresh inbox</strong> to pull from Gmail.
+              </td></tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    <% } else { %>
+      <div class="bg-white border rounded p-4 text-muted text-center">Pick a persona on the left.</div>
+    <% } %>
+  </div>
+</div>

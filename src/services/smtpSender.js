@@ -80,7 +80,7 @@ async function bumpDailyCount(mailboxId) {
   );
 }
 
-export async function sendViaMailbox({ mailbox, to, subject, html, text, replyTo }) {
+export async function sendViaMailbox({ mailbox, to, subject, html, text, replyTo, headers }) {
   const transport = getTransport(mailbox);
   const fromName = mailbox.persona_name || mailbox.label || 'vrtcls';
   const from = `"${fromName.replace(/"/g, '')}" <${mailbox.smtp_user}>`;
@@ -91,6 +91,7 @@ export async function sendViaMailbox({ mailbox, to, subject, html, text, replyTo
     html,
     text: text || undefined,
     replyTo: replyTo || mailbox.smtp_user,
+    headers: headers || undefined,
   });
   await bumpDailyCount(mailbox.id);
   return { id: info.messageId };

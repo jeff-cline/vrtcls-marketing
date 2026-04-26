@@ -1,0 +1,56 @@
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <div>
+    <a href="/admin/inbox?mailbox_id=<%= message.mailbox_id %>" class="text-muted small">← back to <%= message.persona_name || message.mailbox_label %></a>
+    <h2 class="fw-bold mb-1 mt-1"><%= message.subject || '(no subject)' %></h2>
+    <div class="text-muted small">
+      From <strong><%= message.from_name || message.from_address %></strong>
+      <% if (message.from_name) { %>&lt;<%= message.from_address %>&gt;<% } %>
+      · to <%= message.to_addresses %>
+      · <%= new Date(message.received_at).toLocaleString() %>
+      <% if (message.replied_at) { %>· <span class="badge bg-success">replied <%= new Date(message.replied_at).toLocaleString() %></span><% } %>
+    </div>
+  </div>
+</div>
+
+<% if (flash) { %>
+  <div class="alert alert-info py-2 small"><%= flash %><% if (flashErr) { %> — <%= flashErr %><% } %></div>
+<% } %>
+
+<div class="bg-white border rounded p-4 mb-4" style="max-height:520px;overflow:auto;">
+  <% if (message.body_html) { %>
+    <div><%- message.body_html %></div>
+  <% } else if (message.body_text) { %>
+    <pre style="white-space:pre-wrap;font-family:inherit;margin:0;"><%= message.body_text %></pre>
+  <% } else { %>
+    <div class="text-muted">(no body parsed)</div>
+  <% } %>
+</div>
+
+<div class="bg-white border rounded p-4">
+  <h5 class="fw-bold mb-3">Reply as <%= message.persona_name || message.mailbox_label %></h5>
+  <form method="post" action="/admin/inbox/messages/<%= message.id %>/reply">
+    <div class="mb-2">
+      <label class="form-label small">To</label>
+      <input class="form-control form-control-sm" value="<%= message.from_address %>" disabled>
+    </div>
+    <div class="mb-2">
+      <label class="form-label small">Subject</label>
+      <input class="form-control" name="subject" value="Re: <%= (message.subject || '').replace(/^Re:\s*/i, '') %>" required>
+    </div>
+    <div class="mb-2">
+      <label class="form-label small">Reply (HTML)</label>
+      <textarea class="form-control font-monospace" name="body_html" rows="10" required><p>Hi <%= (message.from_name || '').split(' ')[0] %>,</p>
+
+<p></p>
+
+<%- message.persona_signature || '' %></textarea>
+      <div class="form-text">
+        Sent from <strong><%= message.smtp_user %></strong> · From-name: <strong><%= message.persona_name || message.mailbox_label %></strong> · threaded via In-Reply-To.
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-warning fw-bold">Send reply</button>
+      <a href="/admin/inbox?mailbox_id=<%= message.mailbox_id %>" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
