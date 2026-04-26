@@ -3,6 +3,7 @@ import { requireAuth } from '../auth.js';
 import { priceForAge, TIERS, TOKENS_PER_LEAD, MISSING_OPP_PER_LEAD_CENTS } from '../services/pricing.js';
 import { purchaseLead } from '../services/credits.js';
 import { sendOne, sendTestToSelf } from '../services/email.js';
+import { enqueueCampaignSends } from '../services/queue.js';
 
 export default async function userRoutes(app) {
   app.addHook('preHandler', requireAuth);
@@ -156,9 +157,11 @@ export default async function userRoutes(app) {
     return reply.view('user/compose', { user: req.user, templates, leads, mailboxes });
   });
 
+  // Schedule a campaign — creates the campaign in 'draft' and pre-builds every
+  // send row with status='queued' and a projected scheduled_for. Nothing
+  // dispatches until the user clicks Launch on the schedule preview page.
   app.post('/app/send', async (req, reply) => {
     const templateId = Number(req.body.template_id);
-    const mailboxId = req.body.mailbox_id ? Number(req.body.mailbox_id) : null;
     const name = (req.body.campaign_name || 'Untitled').slice(0, 200);
     const leadIds = []
       .concat(req.body.lead_ids || [])
@@ -171,26 +174,67 @@ export default async function userRoutes(app) {
       return reply.redirect('/app/compose?error=tokens');
     }
 
-    const { rows: cam } = await query(
-      `INSERT INTO campaigns (user_id, template_id, name, status, mailbox_id)
-       VALUES ($1, $2, $3, 'sending', $4) RETURNING id`,
-      [req.user.id, templateId, name, mailboxId]
-    );
-    const campaignId = cam[0].id;
+    const ctaLabel = (req.body.cta_label || '').trim().slice(0, 80) || null;
+    const ctaUrl   = (req.body.cta_url   || '').trim().slice(0, 500) || null;
+    const ltvCents = Math.max(0, Math.round(Number(req.body.customer_ltv || 0) * 100));
+    const valuePct = Math.max(0, Math.min(100, Number(req.body.value_multiplier_pct || 5)));
+    const perDay   = Math.max(1, Math.min(500, Number(req.body.sends_per_persona_per_day || 50)));
+    const startHr  = Math.max(0, Math.min(23, Number(req.body.send_window_start_hour || 9)));
+    const endHr    = Math.max(startHr + 1, Math.min(24, Number(req.body.send_window_end_hour || 18)));
 
-    const results = { sent: 0, failed: 0 };
-    for (const leadId of leadIds) {
-      try {
-        await sendOne({ userId: req.user.id, campaignId, leadId, templateId, mailboxId });
-        results.sent++;
-      } catch (err) {
-        req.log.warn({ err, leadId }, 'send failed');
-        results.failed++;
-        if (err.code === 'daily_cap_reached' || err.code === 'mailbox_inactive') break;
-      }
+    const { rows: mboxes } = await query(
+      `SELECT m.id, m.persona_id, m.label, p.display_name AS persona_name
+         FROM mailboxes m LEFT JOIN personas p ON p.id = m.persona_id
+        WHERE m.owner_user_id = $1 AND m.status='active'
+        ORDER BY m.id`,
+      [req.user.id]
+    );
+    if (!mboxes.length) {
+      return reply.redirect('/app/compose?error=no_mailboxes');
     }
-    await query(`UPDATE campaigns SET status='sent' WHERE id=$1`, [campaignId]);
-    return reply.redirect(`/app/campaigns/${campaignId}`);
+
+    const { rows: cam } = await query(
+      `INSERT INTO campaigns
+         (user_id, template_id, name, status,
+          cta_label, cta_url, customer_ltv_cents, value_multiplier_pct,
+          sends_per_persona_per_day, send_window_start_hour, send_window_end_hour)
+       VALUES ($1,$2,$3,'draft',$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [req.user.id, templateId, name, ctaLabel, ctaUrl, ltvCents, valuePct, perDay, startHr, endHr]
+    );
+    const campaign = cam[0];
+
+    await enqueueCampaignSends({
+      campaign,
+      leadIds,
+      mailboxes: mboxes,
+      userId: req.user.id,
+    });
+
+    return reply.redirect(`/app/campaigns/${campaign.id}`);
+  });
+
+  app.post('/app/campaigns/:id/launch', async (req, reply) => {
+    const id = Number(req.params.id);
+    await query(
+      `UPDATE campaigns SET status='sending'
+         WHERE id=$1 AND user_id=$2 AND status IN ('draft','paused')`,
+      [id, req.user.id]
+    );
+    return reply.redirect(`/app/campaigns/${id}`);
+  });
+
+  app.post('/app/campaigns/:id/cancel', async (req, reply) => {
+    const id = Number(req.params.id);
+    await query(
+      `UPDATE sends SET status='canceled'
+         WHERE campaign_id=$1 AND status='queued'`,
+      [id]
+    );
+    await query(
+      `UPDATE campaigns SET status='canceled' WHERE id=$1 AND user_id=$2`,
+      [id, req.user.id]
+    );
+    return reply.redirect(`/app/campaigns/${id}`);
   });
 
   // ==========================================================================
@@ -316,7 +360,11 @@ export default async function userRoutes(app) {
        ORDER BY c.created_at DESC`,
       [req.user.id]
     );
-    return reply.view('user/campaigns', { user: req.user, campaigns: rows });
+    const enriched = rows.map((c) => {
+      const valuePerClickCents = Math.round((c.customer_ltv_cents || 0) * (c.value_multiplier_pct || 0) / 100);
+      return { ...c, est_value_cents: c.clicks * valuePerClickCents };
+    });
+    return reply.view('user/campaigns', { user: req.user, campaigns: enriched });
   });
 
   app.get('/app/campaigns/:id', async (req, reply) => {
@@ -328,14 +376,51 @@ export default async function userRoutes(app) {
       [id, req.user.id]
     );
     if (!cam[0]) return reply.code(404).send('Not found');
+    const campaign = cam[0];
     const { rows: sends } = await query(
-      `SELECT s.*, l.email, l.first_name, l.last_name,
+      `SELECT s.id, s.status, s.scheduled_for, s.sent_at, s.opened_at,
+              l.email, l.first_name, l.last_name,
+              p.display_name AS persona_name,
+              m.label        AS mailbox_label,
               (SELECT COUNT(*)::int FROM click_events ce WHERE ce.send_id = s.id) AS click_count
-       FROM sends s JOIN leads l ON l.id = s.lead_id
-       WHERE s.campaign_id = $1 ORDER BY s.created_at DESC`,
+       FROM sends s
+       JOIN leads l         ON l.id = s.lead_id
+       LEFT JOIN personas p ON p.id = s.persona_id
+       LEFT JOIN mailboxes m ON m.id = s.mailbox_id
+       WHERE s.campaign_id = $1
+       ORDER BY s.scheduled_for ASC NULLS LAST, s.created_at ASC`,
       [id]
     );
-    return reply.view('user/campaign_detail', { user: req.user, campaign: cam[0], sends });
+    const { rows: byPersona } = await query(
+      `SELECT COALESCE(p.display_name, '— no persona —') AS persona,
+              COUNT(*)::int AS total,
+              SUM((s.status='sent')::int)::int     AS sent,
+              SUM((s.status='queued')::int)::int   AS queued
+         FROM sends s LEFT JOIN personas p ON p.id = s.persona_id
+        WHERE s.campaign_id = $1
+        GROUP BY p.display_name ORDER BY persona`,
+      [id]
+    );
+    const { rows: byDay } = await query(
+      `SELECT DATE(s.scheduled_for) AS day,
+              COUNT(*)::int AS total
+         FROM sends s WHERE s.campaign_id = $1 AND s.scheduled_for IS NOT NULL
+         GROUP BY day ORDER BY day`,
+      [id]
+    );
+    const { rows: clicksRow } = await query(
+      `SELECT COUNT(*)::int AS clicks FROM click_events ce
+         JOIN sends s ON s.id=ce.send_id WHERE s.campaign_id = $1`,
+      [id]
+    );
+    const clicks = clicksRow[0].clicks;
+    const valuePerClickCents = Math.round((campaign.customer_ltv_cents || 0) * (campaign.value_multiplier_pct || 0) / 100);
+    const estValueCents = clicks * valuePerClickCents;
+
+    return reply.view('user/campaign_detail', {
+      user: req.user, campaign, sends, byPersona, byDay,
+      clicks, valuePerClickCents, estValueCents,
+    });
   });
 
   app.get('/app/keywords', async (req, reply) => {

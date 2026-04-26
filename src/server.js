@@ -14,6 +14,7 @@ import userRoutes from './routes/user.js';
 import hittRoutes from './routes/hitt.js';
 import adminRoutes from './routes/admin.js';
 import trackingRoutes from './routes/tracking.js';
+import { startQueueWorker } from './services/queue.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -57,4 +58,6 @@ app.setNotFoundHandler((req, reply) => {
 
 app.listen({ port: config.port, host: '0.0.0.0' }).then(() => {
   app.log.info(`vrtcls.marketing listening on :${config.port}`);
+  startQueueWorker();
+  app.log.info('queue worker started');
 });

@@ -9,6 +9,7 @@
       <th class="text-end">Sent</th>
       <th class="text-end">Opened</th>
       <th class="text-end">Clicks</th>
+      <th class="text-end">Est. value</th>
       <th></th>
     </tr>
   </thead>
@@ -21,11 +22,12 @@
         <td class="text-end"><%= c.sent %>/<%= c.total %></td>
         <td class="text-end"><%= c.opened %></td>
         <td class="text-end fw-bold"><%= c.clicks %></td>
+        <td class="text-end fw-bold text-success">$<%= (c.est_value_cents/100).toFixed(2) %></td>
         <td class="text-end"><a href="/app/campaigns/<%= c.id %>" class="btn btn-sm btn-outline-dark">Open</a></td>
       </tr>
     <% }) %>
     <% if (!campaigns.length) { %>
-      <tr><td colspan="7" class="text-muted text-center py-4">No campaigns yet.</td></tr>
+      <tr><td colspan="8" class="text-muted text-center py-4">No campaigns yet.</td></tr>
     <% } %>
   </tbody>
 </table>

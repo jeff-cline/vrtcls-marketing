@@ -1,5 +1,17 @@
 <h1 class="fw-bold mb-3">Compose</h1>
-<p class="text-secondary">Pick a template, pick your leads, fire. One token per send.</p>
+<p class="text-secondary">
+  Pick a template, fill in the CTA + customer value, pick leads, and you'll get a
+  scheduled timeline you can review before launch. Sends are paced across all
+  active mailboxes assigned to you, capped per persona per day so we don't burn
+  warmed seats.
+</p>
+
+<% if (mailboxes.length === 0) { %>
+  <div class="alert alert-warning">
+    <strong>No mailboxes assigned to you yet.</strong> Ask your admin to add at
+    least one Zapmail mailbox under <code>/admin/mailboxes</code> before scheduling.
+  </div>
+<% } %>
 
 <form method="post" action="/app/send" class="bg-white p-4 border rounded">
   <div class="row g-3">
@@ -16,58 +28,101 @@
           </option>
         <% }) %>
       </select>
-      <div class="form-text">★ = your private template; others are the global library.</div>
-    </div>
-    <div class="col-md-12">
-      <label class="form-label fw-bold">Send from mailbox</label>
-      <% if (mailboxes.length === 0) { %>
-        <div class="alert alert-warning py-2 small mb-0">
-          No mailboxes assigned to you yet. Ask your admin to add a Zapmail mailbox under <code>/admin/mailboxes</code>. Until then, sends fall back to the global Resend address.
-        </div>
-      <% } else { %>
-        <select name="mailbox_id" class="form-select">
-          <option value="">— first available (auto) —</option>
-          <% mailboxes.forEach(function(m) { %>
-            <option value="<%= m.id %>">
-              <%= m.label %><% if (m.persona_name) { %> · <%= m.persona_name %><% } %>
-              (<%= m.smtp_user %>) — <%= m.sends_today %>/<%= m.daily_cap %> today
-            </option>
-          <% }) %>
-        </select>
-      <% } %>
+      <div class="form-text">★ = your private template; others are the global library. Templates can use <code>{{cta_label}}</code> and <code>{{cta_url}}</code> — they're filled from the fields below.</div>
     </div>
   </div>
 
-  <div class="mt-4">
-    <div class="d-flex justify-content-between align-items-center">
-      <label class="form-label fw-bold mb-0">Leads to send to</label>
-      <div>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('input[name=lead_ids]').forEach(c => c.checked = true)">Select all</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('input[name=lead_ids]').forEach(c => c.checked = false)">Clear</button>
+  <hr class="my-4">
+
+  <h5 class="fw-bold">Call to action <span class="text-muted small">(used in every email + tracked on click)</span></h5>
+  <div class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label small">Button / link label</label>
+      <input name="cta_label" class="form-control" placeholder="See the offer" maxlength="80" required>
+    </div>
+    <div class="col-md-8">
+      <label class="form-label small">Click destination URL</label>
+      <input name="cta_url" type="url" class="form-control" placeholder="https://yourpartner.com/offer?ref=vrtcls" maxlength="500" required>
+    </div>
+  </div>
+
+  <hr class="my-4">
+
+  <h5 class="fw-bold">Value of a click</h5>
+  <p class="text-muted small mb-3">
+    We multiply <em>customer lifetime value</em> by the <em>conversion multiplier</em> to score every click.
+    A 5% multiplier on a $1,000 LTV customer = <strong>$50 estimated value per click</strong>.
+  </p>
+  <div class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label small">Customer lifetime value (USD)</label>
+      <input name="customer_ltv" type="number" step="0.01" min="0" class="form-control" placeholder="1000" required>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label small">Conversion multiplier (% of clicks that become customers)</label>
+      <input name="value_multiplier_pct" type="number" step="1" min="0" max="100" class="form-control" value="5" required>
+    </div>
+  </div>
+
+  <hr class="my-4">
+
+  <h5 class="fw-bold">Pacing <span class="text-muted small">(per assigned mailbox)</span></h5>
+  <div class="row g-3">
+    <div class="col-md-3">
+      <label class="form-label small">Sends per persona per day</label>
+      <input name="sends_per_persona_per_day" type="number" step="1" min="1" max="500" class="form-control" value="50">
+      <div class="form-text">Goal: warmed seats stay warm.</div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small">Window start (server time, hour)</label>
+      <input name="send_window_start_hour" type="number" step="1" min="0" max="23" class="form-control" value="9">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small">Window end (server time, hour)</label>
+      <input name="send_window_end_hour" type="number" step="1" min="1" max="24" class="form-control" value="18">
+    </div>
+    <div class="col-md-3 d-flex align-items-end">
+      <div class="text-muted small">
+        <%= mailboxes.length %> mailbox<%= mailboxes.length === 1 ? '' : 'es' %> active.
+        <% if (mailboxes.length) { %>
+          Up to <strong><%= mailboxes.length * 50 %></strong> sends/day at the default cap.
+        <% } %>
       </div>
     </div>
-    <div class="border rounded mt-2" style="max-height:400px;overflow:auto;">
-      <table class="table table-sm mb-0">
-        <thead class="table-light sticky-top"><tr><th></th><th>Name</th><th>Email</th><th>City</th></tr></thead>
-        <tbody>
-          <% leads.forEach(function(l) { %>
-            <tr>
-              <td><input type="checkbox" name="lead_ids" value="<%= l.id %>"></td>
-              <td><%= l.first_name || '' %> <%= l.last_name || '' %></td>
-              <td><%= l.email %></td>
-              <td><%= l.address?.city || '' %>, <%= l.address?.state || '' %></td>
-            </tr>
-          <% }) %>
-          <% if (!leads.length) { %>
-            <tr><td colspan="4" class="text-muted text-center py-4">Buy some leads first.</td></tr>
-          <% } %>
-        </tbody>
-      </table>
+  </div>
+
+  <hr class="my-4">
+
+  <div class="d-flex justify-content-between align-items-center">
+    <label class="form-label fw-bold mb-0">Leads to send to</label>
+    <div>
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('input[name=lead_ids]').forEach(c => c.checked = true)">Select all</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('input[name=lead_ids]').forEach(c => c.checked = false)">Clear</button>
     </div>
+  </div>
+  <div class="border rounded mt-2" style="max-height:400px;overflow:auto;">
+    <table class="table table-sm mb-0">
+      <thead class="table-light sticky-top"><tr><th></th><th>Name</th><th>Email</th><th>City</th></tr></thead>
+      <tbody>
+        <% leads.forEach(function(l) { %>
+          <tr>
+            <td><input type="checkbox" name="lead_ids" value="<%= l.id %>"></td>
+            <td><%= l.first_name || '' %> <%= l.last_name || '' %></td>
+            <td><%= l.email %></td>
+            <td><%= l.address?.city || '' %>, <%= l.address?.state || '' %></td>
+          </tr>
+        <% }) %>
+        <% if (!leads.length) { %>
+          <tr><td colspan="4" class="text-muted text-center py-4">Buy some leads first.</td></tr>
+        <% } %>
+      </tbody>
+    </table>
   </div>
 
   <div class="mt-4 d-flex justify-content-between align-items-center">
     <div class="text-muted small">You have <strong><%= user.email_tokens %></strong> send tokens.</div>
-    <button class="btn btn-warning fw-bold">Send</button>
+    <button class="btn btn-warning fw-bold" <%= mailboxes.length === 0 ? 'disabled' : '' %>>
+      Schedule campaign &rarr;
+    </button>
   </div>
 </form>

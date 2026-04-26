@@ -9,8 +9,8 @@ const TEMPLATES = [
     subject: 'Quick note for {{first_name}}',
     body_html: `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#222;">
 <p>Hi {{first_name}},</p>
-<p>Noticed a lot of folks in {{city}} have been looking into <a href="https://vrtcls.marketing/offer" data-link-key="offer">this</a> lately — thought I'd pass it along in case it helps.</p>
-<p>If it's useful, <a href="https://vrtcls.marketing/learn" data-link-key="learn">here's a short overview</a>. If not, no worries — just hit reply and I'll stop.</p>
+<p>Noticed a lot of folks in {{city}} have been looking into <a href="{{cta_url}}" data-link-key="offer">this</a> lately — thought I'd pass it along in case it helps.</p>
+<p>If it's useful, <a href="{{cta_url}}" data-link-key="learn">here's a short overview</a>. If not, no worries — just hit reply and I'll stop.</p>
 <p>— Jeff</p>
 </div>`,
     links: JSON.stringify([
@@ -25,7 +25,7 @@ const TEMPLATES = [
     body_html: `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#222;">
 <p>Hi {{first_name}},</p>
 <p>Quick question — are you still comparing options on this, or already decided?</p>
-<p>If you're still shopping, there's <a href="https://vrtcls.marketing/compare" data-link-key="compare">a fast comparison here</a>. If you've already picked, <a href="https://vrtcls.marketing/alt" data-link-key="alt">this alternative</a> is saving folks money.</p>
+<p>If you're still shopping, there's <a href="{{cta_url}}" data-link-key="compare">a fast comparison here</a>. If you've already picked, <a href="{{cta_url}}" data-link-key="alt">this alternative</a> is saving folks money.</p>
 <p>Either way, happy to help.</p>
 <p>— Jeff</p>
 </div>`,
@@ -41,8 +41,8 @@ const TEMPLATES = [
     body_html: `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#222;">
 <p>Hi {{first_name}},</p>
 <p>Put together a short guide that's been helping people in {{state}} get clearer on options:</p>
-<p><a href="https://vrtcls.marketing/guide" data-link-key="guide">Read the guide</a> (no form, just the guide).</p>
-<p>If you want the deeper version — <a href="https://vrtcls.marketing/deep" data-link-key="deep">here it is</a>.</p>
+<p><a href="{{cta_url}}" data-link-key="guide">Read the guide</a> (no form, just the guide).</p>
+<p>If you want the deeper version — <a href="{{cta_url}}" data-link-key="deep">here it is</a>.</p>
 <p>— Jeff</p>
 </div>`,
     links: JSON.stringify([
@@ -57,8 +57,8 @@ const TEMPLATES = [
     body_html: `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#222;">
 <p>Hi {{first_name}},</p>
 <p>A handful of people in {{zip}} signed up last month — figured you'd want to see it too.</p>
-<p><a href="https://vrtcls.marketing/offer" data-link-key="offer">Here's what they got</a>.</p>
-<p>Or if you want to see how it compares, <a href="https://vrtcls.marketing/compare" data-link-key="compare">this page shows the numbers</a>.</p>
+<p><a href="{{cta_url}}" data-link-key="offer">Here's what they got</a>.</p>
+<p>Or if you want to see how it compares, <a href="{{cta_url}}" data-link-key="compare">this page shows the numbers</a>.</p>
 <p>— Jeff</p>
 </div>`,
     links: JSON.stringify([
@@ -72,8 +72,8 @@ const TEMPLATES = [
     subject: 'For you, {{first_name}}',
     body_html: `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#222;">
 <p>{{first_name}},</p>
-<p>Straight to it: <a href="https://vrtcls.marketing/offer" data-link-key="offer">this offer</a> is open through the end of the week.</p>
-<p>Not for you? <a href="https://vrtcls.marketing/alt" data-link-key="alt">This one</a> might be.</p>
+<p>Straight to it: <a href="{{cta_url}}" data-link-key="offer">this offer</a> is open through the end of the week.</p>
+<p>Not for you? <a href="{{cta_url}}" data-link-key="alt">This one</a> might be.</p>
 <p>— Jeff</p>
 </div>`,
     links: JSON.stringify([
@@ -93,7 +93,7 @@ const TEMPLATES = [
     body_html: `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#222;">
 <p>Hi {{first_name}},</p>
 <p>{{persona_name}} here — I help folks in {{city}} who are weighing options on this. Mind if I share a 2-minute overview?</p>
-<p><a href="https://vrtcls.marketing/overview" data-link-key="overview" style="display:inline-block;padding:10px 18px;background:#ffc107;color:#000;text-decoration:none;border-radius:4px;font-weight:bold">See the overview</a></p>
+<p><a href="{{cta_url}}" data-link-key="overview" style="display:inline-block;padding:10px 18px;background:#ffc107;color:#000;text-decoration:none;border-radius:4px;font-weight:bold">See the overview</a></p>
 <p>If it's not useful just hit reply with "no thanks" and I'll back off.</p>
 {{persona_signature}}
 </div>`,
@@ -106,7 +106,7 @@ const TEMPLATES = [
     body_html: `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#222;">
 <p>Hi {{first_name}},</p>
 <p>I'm {{persona_name}}{{persona_title}}. One question — are you actively comparing options right now, or is this a "someday" thing?</p>
-<p>If you're actively shopping: <a href="https://vrtcls.marketing/compare" data-link-key="compare">here's a side-by-side that takes 90 seconds</a>.</p>
+<p>If you're actively shopping: <a href="{{cta_url}}" data-link-key="compare">here's a side-by-side that takes 90 seconds</a>.</p>
 <p>If it's "someday," say so and I'll send something different.</p>
 {{persona_signature}}
 </div>`,
@@ -119,7 +119,7 @@ const TEMPLATES = [
     body_html: `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#222;">
 <p>{{first_name}},</p>
 <p>{{persona_name}} here. A handful of folks in {{zip}} signed up last week — figured you'd want to see what they got before the offer changes.</p>
-<p><a href="https://vrtcls.marketing/local" data-link-key="local" style="display:inline-block;padding:10px 18px;background:#212529;color:#fff;text-decoration:none;border-radius:4px;font-weight:bold">See what your neighbors got</a></p>
+<p><a href="{{cta_url}}" data-link-key="local" style="display:inline-block;padding:10px 18px;background:#212529;color:#fff;text-decoration:none;border-radius:4px;font-weight:bold">See what your neighbors got</a></p>
 <p>Worst case it's not for you and you ignore me — no harm done.</p>
 {{persona_signature}}
 </div>`,
@@ -132,8 +132,8 @@ const TEMPLATES = [
     body_html: `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#222;">
 <p>Hi {{first_name}},</p>
 <p>{{persona_name}} again. Put together a one-pager specifically for people in {{state}} who are running into this — no form, no signup, just the page.</p>
-<p><a href="https://vrtcls.marketing/guide" data-link-key="guide">Read the one-pager</a></p>
-<p>Want the deeper version? <a href="https://vrtcls.marketing/deep" data-link-key="deep">Here it is</a> — same deal, no friction.</p>
+<p><a href="{{cta_url}}" data-link-key="guide">Read the one-pager</a></p>
+<p>Want the deeper version? <a href="{{cta_url}}" data-link-key="deep">Here it is</a> — same deal, no friction.</p>
 {{persona_signature}}
 </div>`,
     links: JSON.stringify([
@@ -149,7 +149,7 @@ const TEMPLATES = [
 <p>{{first_name}},</p>
 <p>{{persona_name}} — keeping this short. The current offer for {{city}} closes <strong>this Friday</strong>.</p>
 <p style="text-align:center;margin:24px 0;">
-  <a href="https://vrtcls.marketing/claim" data-link-key="claim" style="display:inline-block;padding:14px 28px;background:#28a745;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;font-size:16px">Claim before Friday</a>
+  <a href="{{cta_url}}" data-link-key="claim" style="display:inline-block;padding:14px 28px;background:#28a745;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;font-size:16px">Claim before Friday</a>
 </p>
 <p>If now's not the time, hit reply with "later" and I'll check back next month.</p>
 {{persona_signature}}

@@ -383,6 +383,17 @@ export default async function adminRoutes(app) {
       GROUP BY m.label, m.smtp_user
       ORDER BY sent DESC
     `);
+    const { rows: valueRows } = await query(`
+      SELECT
+        COALESCE(SUM(
+          (SELECT COUNT(*) FROM click_events ce
+             JOIN sends s ON s.id=ce.send_id WHERE s.campaign_id=c.id)
+          * c.customer_ltv_cents * c.value_multiplier_pct / 100
+        ), 0)::bigint AS est_value_cents
+      FROM campaigns c
+    `);
+    const estValueCents = Number(valueRows[0].est_value_cents || 0);
+
     return reply.view('admin/reports', {
       user: req.user,
       revenue: rev[0],
@@ -392,6 +403,7 @@ export default async function adminRoutes(app) {
       dailyRev,
       byPersona,
       byMailbox,
+      estValueCents,
     });
   });
 

@@ -41,7 +41,7 @@ export function buildPersonaVars(persona) {
   };
 }
 
-export async function renderEmail({ template, lead, sendId, persona, sampleMode = false }) {
+export async function renderEmail({ template, lead, sendId, persona, sampleMode = false, ctaOverride = null }) {
   const personaVars = buildPersonaVars(persona);
   const vars = {
     first_name: lead.first_name || 'there',
@@ -50,6 +50,8 @@ export async function renderEmail({ template, lead, sendId, persona, sampleMode 
     state: lead.address?.state || '',
     zip: lead.address?.zip || '',
     topic: template.topic_label || 'this',
+    cta_label: ctaOverride?.label || 'Learn more',
+    cta_url:   ctaOverride?.url   || `${config.baseUrl}/offer`,
     ...personaVars,
   };
   const subject = substitute(template.subject, vars);
