@@ -1,20 +1,21 @@
-<h1 class="fw-bold mb-3">Email templates (global library)</h1>
-<p class="text-secondary">
-  Edit subject + HTML for the global starter library. Each user can fork these into their own private versions at <code>/app/templates</code>.
+<h1 class="fw-bold mb-1">Email templates (global library)</h1>
+<p class="text-secondary mb-3">
+  Drop in pre-built blocks, edit copy, preview live. The CAN-SPAM footer is appended automatically at send time —
+  every production send and every admin "send test" includes physical address + unsubscribe link.
   <br>Lead vars: <code>{{first_name}}</code>, <code>{{city}}</code>, <code>{{state}}</code>, <code>{{zip}}</code>, <code>{{topic}}</code>.
-  Persona vars (filled from the sending mailbox's persona): <code>{{persona_name}}</code>, <code>{{persona_title}}</code>, <code>{{persona_signature}}</code>.
-  Mark clickable CTA links with <code>data-link-key="slug"</code> — those keys become tags when a lead clicks.
+  Persona vars: <code>{{persona_name}}</code>, <code>{{persona_title}}</code>, <code>{{persona_signature}}</code>.
+  Track CTAs with <code>data-link-key="slug"</code>.
 </p>
 
 <% if (flash) { %>
   <div class="alert alert-info py-2 small"><%= flash %><% if (flashErr) { %> — <%= flashErr %><% } %></div>
 <% } %>
 
-<% templates.forEach(function(t) { %>
-  <details class="bg-white p-3 border rounded mb-3" <%= t.id === 1 ? 'open' : '' %>>
+<% templates.forEach(function(t, idx) { %>
+  <details class="bg-white p-3 border rounded mb-3" <%= idx === 0 ? 'open' : '' %>>
     <summary class="fw-bold fs-5"><%= t.name %> <span class="text-muted small">(<%= t.slug %>)</span></summary>
 
-    <form method="post" action="/admin/templates/<%= t.id %>" class="mt-3">
+    <form method="post" action="/admin/templates/<%= t.id %>" class="mt-3" data-tpl-form="<%= t.id %>">
       <div class="mb-2">
         <label class="form-label">Name</label>
         <input name="name" class="form-control" value="<%= t.name %>" required>
@@ -23,11 +24,40 @@
         <label class="form-label">Subject</label>
         <input name="subject" class="form-control" value="<%= t.subject %>" required>
       </div>
-      <div class="mb-2">
-        <label class="form-label">HTML body</label>
-        <textarea name="body_html" class="form-control font-monospace" rows="12"><%= t.body_html %></textarea>
+
+      <div class="row g-3 mt-1">
+        <div class="col-lg-3">
+          <div class="border rounded p-2 bg-light h-100">
+            <div class="fw-bold small mb-2">Block gallery</div>
+            <div class="d-grid gap-2" data-blockbar="<%= t.id %>">
+              <button type="button" class="btn btn-sm btn-outline-secondary" data-block="hero">Hero header</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" data-block="paragraph">Paragraph</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" data-block="button">CTA button</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" data-block="twocol">Two-column</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" data-block="image">Image</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" data-block="quote">Pull quote</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" data-block="bullets">Bullet list</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" data-block="divider">Divider</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" data-block="signature">Persona signature</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" data-block="ps">P.S. line</button>
+            </div>
+            <div class="text-muted small mt-3">Click a block to insert at the cursor. CAN-SPAM footer is added at send time — don't add it manually.</div>
+          </div>
+        </div>
+
+        <div class="col-lg-5">
+          <label class="form-label small mb-1">HTML body</label>
+          <textarea name="body_html" class="form-control font-monospace" rows="22" data-tpl-html="<%= t.id %>"><%= t.body_html %></textarea>
+        </div>
+
+        <div class="col-lg-4">
+          <label class="form-label small mb-1">Live preview</label>
+          <div class="border rounded p-3 bg-white" style="min-height:480px;max-height:560px;overflow:auto;" data-tpl-preview="<%= t.id %>"></div>
+          <div class="text-muted small mt-1">Rendered with sample lead data (Sam in Austin, TX).</div>
+        </div>
       </div>
-      <button class="btn btn-warning fw-bold">Save</button>
+
+      <button class="btn btn-warning fw-bold mt-3">Save</button>
     </form>
 
     <hr>
@@ -51,3 +81,74 @@
     </form>
   </details>
 <% }) %>
+
+<script>
+(function(){
+  var BLOCKS = {
+    hero: '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111;padding:32px 24px;border-radius:8px;">\n  <tr><td style="color:#fff;font-family:-apple-system,Helvetica,Arial,sans-serif;">\n    <h1 style="margin:0 0 8px;font-size:24px;color:#ffc107;">Hi {{first_name}},</h1>\n    <p style="margin:0;font-size:15px;line-height:1.5;color:#eee;">One-line value prop here.</p>\n  </td></tr>\n</table>\n',
+    paragraph: '<p style="font-size:15px;line-height:1.6;color:#222;font-family:-apple-system,Helvetica,Arial,sans-serif;">Write a clear, conversational paragraph here. Address {{first_name}} like a person, not a list.</p>\n',
+    button: '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;"><tr><td style="background:#ffc107;border-radius:6px;">\n  <a href="https://example.com" data-link-key="cta_primary" style="display:inline-block;padding:12px 24px;color:#111;text-decoration:none;font-weight:bold;font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:15px;">See if you qualify →</a>\n</td></tr></table>\n',
+    twocol: '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0;">\n  <tr>\n    <td width="48%" valign="top" style="padding-right:12px;font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:#222;">\n      <strong>Why us</strong><br>Short reason one.\n    </td>\n    <td width="48%" valign="top" style="padding-left:12px;font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:#222;">\n      <strong>What you get</strong><br>Short reason two.\n    </td>\n  </tr>\n</table>\n',
+    image: '<img src="https://placehold.co/600x200" alt="" style="display:block;width:100%;max-width:600px;border-radius:6px;margin:16px 0;">\n',
+    quote: '<blockquote style="border-left:3px solid #ffc107;margin:18px 0;padding:8px 16px;color:#444;font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:15px;font-style:italic;">"A short customer quote, in their own words." — Name, Title</blockquote>\n',
+    bullets: '<ul style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#222;">\n  <li>One concrete benefit</li>\n  <li>Another concrete benefit</li>\n  <li>The thing that makes them act</li>\n</ul>\n',
+    divider: '<hr style="border:none;border-top:1px solid #e5e5e5;margin:24px 0;">\n',
+    signature: '<p style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:#444;margin-top:24px;">\n  Cheers,<br>\n  <strong>{{persona_name}}</strong><br>\n  {{persona_title}}<br>\n  {{persona_signature}}\n</p>\n',
+    ps:        '<p style="font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:13px;color:#666;margin-top:18px;font-style:italic;">P.S. {{first_name}}, this offer is only good through Friday — happy to answer any quick question, just hit reply.</p>\n',
+  };
+
+  function sampleVars() {
+    return {
+      first_name: 'Sam', last_name: 'Lee',
+      city: 'Austin', state: 'TX', zip: '78701',
+      topic: 'this',
+      persona_name: 'Olivia Mitchell', persona_title: 'Senior Outreach',
+      persona_signature: 'gtmone.co',
+      cta_label: 'Learn more', cta_url: '#preview-cta',
+    };
+  }
+  function render(html) {
+    var v = sampleVars();
+    return String(html || '').replace(/\{\{\s*([\w.]+)\s*\}\}/g, function(_m, k){
+      return v[k] != null ? v[k] : '';
+    });
+  }
+
+  function paint(id) {
+    var ta = document.querySelector('[data-tpl-html="' + id + '"]');
+    var pv = document.querySelector('[data-tpl-preview="' + id + '"]');
+    if (!ta || !pv) return;
+    pv.innerHTML = render(ta.value);
+  }
+
+  function insertAtCursor(ta, txt) {
+    var start = ta.selectionStart, end = ta.selectionEnd;
+    var v = ta.value;
+    ta.value = v.slice(0, start) + txt + v.slice(end);
+    var pos = start + txt.length;
+    ta.focus();
+    ta.setSelectionRange(pos, pos);
+  }
+
+  document.querySelectorAll('[data-tpl-html]').forEach(function(ta){
+    var id = ta.getAttribute('data-tpl-html');
+    paint(id);
+    ta.addEventListener('input', function(){ paint(id); });
+  });
+
+  document.querySelectorAll('[data-blockbar]').forEach(function(bar){
+    var id = bar.getAttribute('data-blockbar');
+    bar.querySelectorAll('button[data-block]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var key = btn.getAttribute('data-block');
+        var snippet = BLOCKS[key];
+        if (!snippet) return;
+        var ta = document.querySelector('[data-tpl-html="' + id + '"]');
+        if (!ta) return;
+        insertAtCursor(ta, snippet);
+        paint(id);
+      });
+    });
+  });
+})();
+</script>

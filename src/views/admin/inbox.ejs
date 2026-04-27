@@ -7,10 +7,55 @@
       SMTP sender. Replies go out from the same persona, with proper threading.
     </p>
   </div>
-  <form method="post" action="/admin/inbox/refresh-all" class="m-0">
-    <button class="btn btn-warning fw-bold">↻ Refresh — get email responses</button>
-  </form>
+  <div class="d-flex gap-2 flex-wrap">
+    <form method="post" action="/admin/inbox/refresh-all" class="m-0">
+      <button class="btn btn-warning fw-bold">↻ Refresh — get email responses</button>
+    </form>
+    <button id="test-all-btn" type="button" class="btn btn-outline-dark fw-bold">⚙ Test all mailboxes</button>
+  </div>
 </div>
+
+<div id="test-all-report" class="mb-3" style="display:none;"></div>
+
+<script>
+(function(){
+  var btn = document.getElementById('test-all-btn');
+  var box = document.getElementById('test-all-report');
+  if (!btn) return;
+  btn.addEventListener('click', async function(){
+    btn.disabled = true; btn.textContent = 'Testing…';
+    box.style.display = 'block';
+    box.innerHTML = '<div class="alert alert-info py-2 small mb-0">Connecting to every active mailbox over SMTP + IMAP…</div>';
+    try {
+      var resp = await fetch('/admin/inbox/test-all', { method: 'POST' });
+      var data = await resp.json();
+      var rows = (data.results || []).map(function(r){
+        function badge(state, err) {
+          var cls = state === 'ok' ? 'bg-success' : (state === 'fail' ? 'bg-danger' : 'bg-secondary');
+          var lbl = state.toUpperCase();
+          return '<span class="badge ' + cls + '">' + lbl + '</span>'
+               + (err ? ' <span class="text-muted small">' + err.replace(/[<>]/g,'') + '</span>' : '');
+        }
+        return '<tr>'
+          + '<td class="fw-bold small">' + r.smtp_user + '</td>'
+          + '<td>' + badge(r.smtp, r.smtp_err) + '</td>'
+          + '<td>' + badge(r.imap, r.imap_err) + (r.imap_count != null ? ' <span class="text-muted small">· ' + r.imap_count + ' msgs</span>' : '') + '</td>'
+          + '</tr>';
+      }).join('');
+      box.innerHTML =
+        '<div class="bg-white border rounded">'
+        + '<table class="table table-sm align-middle mb-0">'
+        + '<thead class="table-light"><tr><th>Mailbox</th><th>SMTP</th><th>IMAP</th></tr></thead>'
+        + '<tbody>' + (rows || '<tr><td colspan="3" class="text-muted text-center py-3">No active mailboxes.</td></tr>') + '</tbody>'
+        + '</table></div>';
+    } catch (e) {
+      box.innerHTML = '<div class="alert alert-danger py-2 small mb-0">Test run failed: ' + (e.message || e) + '</div>';
+    } finally {
+      btn.disabled = false; btn.textContent = '⚙ Test all mailboxes';
+    }
+  });
+})();
+</script>
 
 <% if (flash) { %>
   <div class="alert alert-info py-2 small"><%= flash %><% if (flashErr) { %> — <%= flashErr %><% } %></div>

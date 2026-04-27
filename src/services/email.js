@@ -57,16 +57,19 @@ export async function renderEmail({ template, lead, sendId, persona, sampleMode 
   const subject = substitute(template.subject, vars);
   let html = substitute(template.body_html, vars);
 
+  // Always append the CAN-SPAM footer, including on test sends — the footer
+  // is required content that admins need to verify visually.
+  const unsub = sampleMode ? `${config.baseUrl}/u/preview` : `${config.baseUrl}/u/${sendId}`;
+  html = html + canSpamFooter(config.companyAddress, unsub);
+
   if (sampleMode) {
     const previewBanner = `
       <div style="background:#fff7d6;border:1px solid #f0c000;color:#5a4500;padding:8px 12px;font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:12px;border-radius:4px;margin-bottom:12px;">
-        Test send — link tracking and unsubscribe footer disabled. Recipient was you.
+        Test send — link tracking + open pixel are off, but the CAN-SPAM footer below is identical to production.
       </div>`;
     return { subject: `[TEST] ${subject}`, html: previewBanner + html };
   }
 
-  const unsub = `${config.baseUrl}/u/${sendId}`;
-  html = html + canSpamFooter(config.companyAddress, unsub);
   html = rewriteLinks(html, { sendId, baseUrl: config.baseUrl });
   html = injectPixel(html, { sendId, baseUrl: config.baseUrl });
   return { subject, html };

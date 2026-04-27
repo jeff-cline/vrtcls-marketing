@@ -5,8 +5,10 @@ import { sendOne, sendTransactional, sendTestToSelf } from '../services/email.js
 import { ingestPersons } from '../services/personImport.js';
 import { verifyMailbox, sendViaMailbox, clearTransport } from '../services/smtpSender.js';
 import { syncMailboxInbox, markMessageRead } from '../services/imapReader.js';
+import { parseLeadsXlsx, ingestXlsxPersons } from '../services/xlsxImport.js';
 import * as zapmail from '../services/zapmail.js';
 import { config } from '../config.js';
+import { ImapFlow } from 'imapflow';
 
 function parseCsv(text) {
   const out = [];
@@ -127,6 +129,51 @@ export default async function adminRoutes(app) {
 
   app.get('/admin/import', async (req, reply) => {
     return reply.view('admin/import', { user: req.user, result: null });
+  });
+
+  // Drag-and-drop xlsx import — parses the first sheet that has contact-shaped
+  // columns and upserts leads. Tag/audience-label come from form fields.
+  app.post('/admin/import/xlsx', async (req, reply) => {
+    let buf = null;
+    let tagField = null;
+    let labelField = null;
+    for await (const part of req.parts()) {
+      if (part.type === 'file' && part.fieldname === 'file') {
+        const chunks = [];
+        for await (const c of part.file) chunks.push(c);
+        buf = Buffer.concat(chunks);
+      } else if (part.type === 'field') {
+        if (part.fieldname === 'tag') tagField = String(part.value || '').trim();
+        if (part.fieldname === 'label') labelField = String(part.value || '').trim();
+      }
+    }
+    if (!buf) {
+      return reply.view('admin/import', { user: req.user, result: { error: 'No file uploaded.' } });
+    }
+    try {
+      const persons = parseLeadsXlsx(buf);
+      if (!persons.length) {
+        return reply.view('admin/import', {
+          user: req.user,
+          result: { error: 'No contact rows found. Expected columns include Full Name, Email/Emails, City, State, ZIP.' },
+        });
+      }
+      const result = await ingestXlsxPersons({
+        persons,
+        importedBy: req.user.id,
+        audienceLabel: labelField || null,
+        extraTag: tagField || null,
+      });
+      return reply.view('admin/import', {
+        user: req.user,
+        result: { ...result, sourceRows: persons.length, mode: 'xlsx' },
+      });
+    } catch (err) {
+      return reply.view('admin/import', {
+        user: req.user,
+        result: { error: `Parse failed: ${String(err.message || err).slice(0, 200)}` },
+      });
+    }
   });
 
   // Ingest a raw HighIntentTargets find_persons export (JSON list).
@@ -832,6 +879,48 @@ export default async function adminRoutes(app) {
       flash: req.query.flash || null,
       flashErr: req.query.err || null,
     });
+  });
+
+  // Test every active mailbox end-to-end (SMTP login + IMAP login). Returns
+  // a JSON report so the inbox page can render OK/FAIL per mailbox.
+  app.post('/admin/inbox/test-all', async (req, reply) => {
+    const { rows } = await query(`SELECT * FROM mailboxes WHERE status='active' ORDER BY id`);
+    const results = [];
+    for (const m of rows) {
+      const out = { id: m.id, smtp_user: m.smtp_user, smtp: 'pending', imap: 'pending' };
+      try {
+        await verifyMailbox(m);
+        out.smtp = 'ok';
+      } catch (e) {
+        out.smtp = 'fail';
+        out.smtp_err = String(e.message || e).slice(0, 160);
+      }
+      try {
+        const c = new ImapFlow({
+          host: m.imap_host || 'imap.gmail.com',
+          port: m.imap_port || 993,
+          secure: m.imap_secure !== false,
+          auth: { user: m.smtp_user, pass: m.smtp_pass },
+          logger: false,
+          connectionTimeout: 20000,
+          greetingTimeout: 15000,
+          socketTimeout: 25000,
+        });
+        await c.connect();
+        const lock = await c.getMailboxLock('INBOX');
+        try {
+          const status = await c.status('INBOX', { messages: true });
+          out.imap = 'ok';
+          out.imap_count = status.messages || 0;
+        } finally { lock.release(); }
+        await c.logout().catch(() => {});
+      } catch (e) {
+        out.imap = 'fail';
+        out.imap_err = String(e.message || e).slice(0, 160);
+      }
+      results.push(out);
+    }
+    return reply.send({ results });
   });
 
   app.post('/admin/inbox/refresh-all', async (req, reply) => {
