@@ -62,7 +62,9 @@ export async function syncMailboxInbox(mailbox, limit = 50) {
         const inReplyTo = env.inReplyTo || null;
         const received  = msg.internalDate ? new Date(msg.internalDate) : new Date();
 
-        const { bodyText, bodyHtml } = parseBody(msg.source);
+        const { bodyText: rawText, bodyHtml: rawHtml } = parseBody(msg.source);
+        const bodyText = stripNul(rawText);
+        const bodyHtml = stripNul(rawHtml);
         const snippet = (bodyText || '').replace(/\s+/g, ' ').trim().slice(0, 200);
         const isRead  = msg.flags.has('\\Seen');
 
@@ -74,8 +76,10 @@ export async function syncMailboxInbox(mailbox, limit = 50) {
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
            ON CONFLICT (mailbox_id, uid) DO NOTHING`,
           [
-            mailbox.id, msg.uid, messageId, inReplyTo, inReplyTo || messageId,
-            fromAddr, fromName, toAddrs, subject, snippet,
+            mailbox.id, msg.uid,
+            stripNul(messageId), stripNul(inReplyTo), stripNul(inReplyTo || messageId),
+            stripNul(fromAddr), stripNul(fromName), stripNul(toAddrs),
+            stripNul(subject), stripNul(snippet),
             bodyText, bodyHtml, received,
             isRead ? new Date() : null,
           ]
@@ -95,6 +99,11 @@ export async function syncMailboxInbox(mailbox, limit = 50) {
   }
 
   return { fetched, inserted };
+}
+
+function stripNul(s) {
+  if (s == null) return s;
+  return String(s).replace(/\u0000/g, '');
 }
 
 // Parse the RFC822 source already retrieved in the outer fetch. No IMAP
