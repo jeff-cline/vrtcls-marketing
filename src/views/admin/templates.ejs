@@ -1,11 +1,14 @@
-<h1 class="fw-bold mb-1">Email templates (global library)</h1>
-<p class="text-secondary mb-3">
-  Drop in pre-built blocks, edit copy, preview live. The CAN-SPAM footer is appended automatically at send time —
-  every production send and every admin "send test" includes physical address + unsubscribe link.
-  <br>Lead vars: <code>{{first_name}}</code>, <code>{{city}}</code>, <code>{{state}}</code>, <code>{{zip}}</code>, <code>{{topic}}</code>.
-  Persona vars: <code>{{persona_name}}</code>, <code>{{persona_title}}</code>, <code>{{persona_signature}}</code>.
-  Track CTAs with <code>data-link-key="slug"</code>.
-</p>
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <h1 class="fw-bold mb-1">Email templates (global library)</h1>
+    <p class="text-secondary mb-0">
+      Drop in pre-built blocks, edit copy, preview live. CAN-SPAM footer is appended automatically at send time.
+    </p>
+  </div>
+  <button type="button" class="btn btn-warning fw-bold" data-bs-toggle="modal" data-bs-target="#vars-modal">
+    🛠 Customization options
+  </button>
+</div>
 
 <% if (flash) { %>
   <div class="alert alert-info py-2 small"><%= flash %><% if (flashErr) { %> — <%= flashErr %><% } %></div>
@@ -82,6 +85,118 @@
   </details>
 <% }) %>
 
+<div class="modal fade" id="vars-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold">🛠 Customization options</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-secondary mb-3">
+          Click any <code>Insert</code> button below to drop that variable at the cursor of the
+          last field you clicked into (subject line or HTML body). Variables are wrapped with
+          <code>{{ }}</code> and replaced at send time.
+        </p>
+
+        <div class="alert alert-warning small">
+          <strong>Sender + persona always match automatically.</strong>
+          When you send from a mailbox (e.g. <code>sophia@bestbizz.co</code>) the
+          <em>From</em> header is built from that persona's record — the same record that fills
+          <code>{{persona_name}}</code>, <code>{{persona_title}}</code>, and
+          <code>{{persona_signature}}</code>. You don't need to keep them in sync by hand.
+          If you change the sending mailbox on the Send page, every persona variable updates with it.
+        </div>
+
+        <h6 class="fw-bold mt-3 mb-2">Lead variables <span class="text-muted small fw-normal">— filled from each recipient row</span></h6>
+        <table class="table table-sm align-middle">
+          <tbody>
+            <% [
+              ['first_name','First name','Sam'],
+              ['last_name','Last name','Lee'],
+              ['city','City','Austin'],
+              ['state','State (2-letter)','TX'],
+              ['zip','ZIP','78701'],
+              ['topic','Topic / keyword tag','this'],
+            ].forEach(function(v){ %>
+              <tr>
+                <td><code>{{<%= v[0] %>}}</code></td>
+                <td><%= v[1] %></td>
+                <td class="text-muted small">e.g. <%= v[2] %></td>
+                <td class="text-end">
+                  <button type="button" class="btn btn-sm btn-outline-warning fw-bold" data-insert-var="{{<%= v[0] %>}}">Insert</button>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+
+        <h6 class="fw-bold mt-4 mb-2">Persona variables <span class="text-muted small fw-normal">— filled from the sending mailbox</span></h6>
+        <table class="table table-sm align-middle">
+          <tbody>
+            <% [
+              ['persona_name','Display name on the From header','Olivia Mitchell'],
+              ['persona_title','Title under the signature','Senior Outreach'],
+              ['persona_signature','Signature line (URL or tagline)','gtmone.co'],
+            ].forEach(function(v){ %>
+              <tr>
+                <td><code>{{<%= v[0] %>}}</code></td>
+                <td><%= v[1] %></td>
+                <td class="text-muted small">e.g. <%= v[2] %></td>
+                <td class="text-end">
+                  <button type="button" class="btn btn-sm btn-outline-warning fw-bold" data-insert-var="{{<%= v[0] %>}}">Insert</button>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+
+        <h6 class="fw-bold mt-4 mb-2">Call-to-action tracking</h6>
+        <p class="small text-secondary mb-2">
+          Add <code>data-link-key="some_slug"</code> to any <code>&lt;a&gt;</code> tag and we'll track
+          clicks under that label. Default CTA helpers also work as variables.
+        </p>
+        <table class="table table-sm align-middle">
+          <tbody>
+            <tr>
+              <td><code>data-link-key="cta_primary"</code></td>
+              <td>Tracks clicks on a specific link</td>
+              <td class="text-muted small">paste into &lt;a&gt; tag</td>
+              <td class="text-end">
+                <button type="button" class="btn btn-sm btn-outline-warning fw-bold" data-insert-var=' data-link-key="cta_primary"'>Insert</button>
+              </td>
+            </tr>
+            <tr>
+              <td><code>{{cta_label}}</code></td>
+              <td>Default CTA button text</td>
+              <td class="text-muted small">e.g. Learn more</td>
+              <td class="text-end">
+                <button type="button" class="btn btn-sm btn-outline-warning fw-bold" data-insert-var="{{cta_label}}">Insert</button>
+              </td>
+            </tr>
+            <tr>
+              <td><code>{{cta_url}}</code></td>
+              <td>Default CTA destination URL</td>
+              <td class="text-muted small">e.g. https://…</td>
+              <td class="text-end">
+                <button type="button" class="btn btn-sm btn-outline-warning fw-bold" data-insert-var="{{cta_url}}">Insert</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="text-muted small mt-3">
+          Tip: click into the <strong>Subject</strong> field or the <strong>HTML body</strong> textarea
+          first, then open this dialog and click <em>Insert</em>. The variable lands at your cursor.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   var BLOCKS = {
@@ -148,6 +263,35 @@
         insertAtCursor(ta, snippet);
         paint(id);
       });
+    });
+  });
+
+  // Track the last-focused subject/body field so the Customization-options
+  // modal knows where to drop a variable.
+  var lastFocused = null;
+  document.querySelectorAll('input[name="subject"], textarea[data-tpl-html]').forEach(function(el){
+    el.addEventListener('focus', function(){ lastFocused = el; });
+  });
+
+  document.querySelectorAll('[data-insert-var]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var token = btn.getAttribute('data-insert-var') || '';
+      var target = lastFocused;
+      if (!target) {
+        // Fall back to the body of the first open template.
+        var open = document.querySelector('details[open] textarea[data-tpl-html]')
+                || document.querySelector('textarea[data-tpl-html]');
+        target = open;
+      }
+      if (!target) {
+        alert('Click into the subject or HTML body first, then pick a variable.');
+        return;
+      }
+      insertAtCursor(target, token);
+      var id = target.getAttribute && target.getAttribute('data-tpl-html');
+      if (id) paint(id);
+      target.focus();
+      lastFocused = target;
     });
   });
 })();
