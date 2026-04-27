@@ -786,29 +786,71 @@ export default async function adminRoutes(app) {
         FROM mailboxes m LEFT JOIN personas p ON p.id = m.persona_id
        ORDER BY p.display_name NULLS LAST, m.label
     `);
-    const activeId = req.query.mailbox_id ? Number(req.query.mailbox_id) : (mailboxes[0]?.id || null);
+
+    // Default tab is "all" — combined view across every persona's mailbox.
+    const raw = req.query.mailbox_id;
+    const isAll = !raw || raw === 'all';
+    const activeId = isAll ? null : String(raw);
+
     let messages = [];
     let activeMailbox = null;
-    if (activeId) {
-      activeMailbox = mailboxes.find((m) => m.id === activeId) || null;
+
+    if (isAll) {
       const { rows } = await query(`
-        SELECT id, from_address, from_name, subject, snippet,
-               received_at, read_at, replied_at
-          FROM inbox_messages
-         WHERE mailbox_id = $1
-         ORDER BY received_at DESC
-         LIMIT 200
-      `, [activeId]);
+        SELECT im.id, im.from_address, im.from_name, im.subject, im.snippet,
+               im.received_at, im.read_at, im.replied_at,
+               im.mailbox_id, m.smtp_user AS mailbox_email,
+               p.display_name AS persona_name
+          FROM inbox_messages im
+          JOIN mailboxes m ON m.id = im.mailbox_id
+          LEFT JOIN personas p ON p.id = m.persona_id
+         ORDER BY im.received_at DESC
+         LIMIT 300
+      `);
       messages = rows;
+    } else {
+      activeMailbox = mailboxes.find((m) => String(m.id) === activeId) || null;
+      if (activeMailbox) {
+        const { rows } = await query(`
+          SELECT id, from_address, from_name, subject, snippet,
+                 received_at, read_at, replied_at
+            FROM inbox_messages
+           WHERE mailbox_id = $1
+           ORDER BY received_at DESC
+           LIMIT 200
+        `, [activeMailbox.id]);
+        messages = rows;
+      }
     }
+
     return reply.view('admin/inbox', {
       user: req.user,
       mailboxes,
       activeMailbox,
+      isAll,
       messages,
       flash: req.query.flash || null,
       flashErr: req.query.err || null,
     });
+  });
+
+  app.post('/admin/inbox/refresh-all', async (req, reply) => {
+    const { rows } = await query(`SELECT * FROM mailboxes WHERE status = 'active' ORDER BY id`);
+    let totalFetched = 0, totalInserted = 0, failures = [];
+    for (const mailbox of rows) {
+      try {
+        const { fetched, inserted } = await syncMailboxInbox(mailbox);
+        totalFetched += fetched; totalInserted += inserted;
+      } catch (err) {
+        failures.push(`${mailbox.smtp_user}: ${String(err.message || err).slice(0, 80)}`);
+      }
+    }
+    const flash = `synced_all_${totalFetched}_${totalInserted}`;
+    if (failures.length) {
+      const e = encodeURIComponent(failures.join(' | ').slice(0, 400));
+      return reply.redirect(`/admin/inbox?flash=${flash}&err=${e}`);
+    }
+    return reply.redirect(`/admin/inbox?flash=${flash}`);
   });
 
   app.post('/admin/inbox/:mailboxId/refresh', async (req, reply) => {
