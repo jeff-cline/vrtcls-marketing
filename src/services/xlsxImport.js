@@ -64,7 +64,9 @@ function rowToPerson(row) {
   if (!email && !firstName) return null;
 
   const phone = get(row, 'Phone', 'Phone Number', 'OK to Call', 'Mobile');
-  const dnc = !!get(row, 'Do Not Call', 'DNC') && !get(row, 'OK to Call');
+  // The "Do Not Call" column is phone-DNC, not email-DNC — don't block email
+  // sends from a phone list. Only honor an explicit email-DNC signal.
+  const dnc = !!get(row, 'Email DNC', 'Do Not Email', 'Email Suppress');
 
   const address = {
     line1:  get(row, 'Address', 'Street', 'Address Line 1') || null,
