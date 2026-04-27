@@ -143,31 +143,63 @@
       <% }) %>
     </div>
 
-    <h6 class="fw-bold text-uppercase text-muted mt-3" style="font-size:11px;letter-spacing:.5px;">Call-to-action</h6>
-    <div class="text-muted mb-2" style="font-size:12px;">
-      Add <code>data-link-key</code> to any <code>&lt;a&gt;</code> for click tracking.
+    <h6 class="fw-bold text-uppercase text-muted mt-3" style="font-size:11px;letter-spacing:.5px;">Call-to-action (tracked)</h6>
+    <div class="alert alert-light border small mb-2 py-2">
+      <div class="fw-bold mb-1">How click tracking works</div>
+      <ol class="ps-3 mb-1" style="font-size:12px;line-height:1.5;">
+        <li>Insert a <strong>tracked CTA button</strong> from the recipes below.</li>
+        <li>Edit the visible <code>href="…"</code> to your real destination URL.</li>
+        <li>Edit the <code>data-link-key="…"</code> to a short slug describing the offer
+          (<em>free_consult</em>, <em>pricing</em>, <em>book_call</em>, <em>stem_cells</em>).</li>
+        <li>Edit the visible button label.</li>
+      </ol>
+      <div style="font-size:12px;line-height:1.5;">
+        Every click is logged against the recipient's customer record AND added to the
+        keyword cloud. The <code>data-link-key</code> <strong>becomes</strong> the keyword on
+        the Keywords + Cross-market pages — so use words you'd actually want to see trending.
+      </div>
     </div>
+
+    <div class="text-muted mb-2" style="font-size:12px;">Pick a recipe — drops a complete tracked button at your cursor:</div>
     <div class="d-grid gap-1 mb-3">
-      <div class="d-flex align-items-center justify-content-between border rounded px-2 py-1">
-        <div>
-          <code>data-link-key="cta_primary"</code>
-          <div class="text-muted" style="font-size:11px;">Track clicks on a specific link</div>
+      <%
+        function ctaSnippet(slug, href, label, color) {
+          return '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0;"><tr><td style="background:' + color + ';border-radius:6px;">'
+               + '<a href="' + href + '" data-link-key="' + slug + '" style="display:inline-block;padding:12px 24px;color:#111;text-decoration:none;font-weight:bold;font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:15px;">'
+               + label + '</a></td></tr></table>';
+        }
+        const RECIPES = [
+          ['Primary CTA — Get information', ctaSnippet('get_information','https://example.com/info','Get information →','#ffc107')],
+          ['Book a call CTA',                ctaSnippet('book_call','https://example.com/book','Book a call →','#ffc107')],
+          ['Pricing / qualify CTA',          ctaSnippet('pricing','https://example.com/pricing','See if you qualify →','#ffc107')],
+        ];
+      %>
+      <% RECIPES.forEach(function(r){ %>
+        <div class="d-flex align-items-center justify-content-between border rounded px-2 py-1">
+          <div style="font-size:12px;">
+            <strong><%= r[0] %></strong>
+            <div class="text-muted" style="font-size:11px;">Tracked button — edit href + data-link-key after insert.</div>
+          </div>
+          <button type="button" class="btn btn-sm btn-warning fw-bold" data-insert-snippet="<%= r[1].replace(/"/g, '&quot;') %>">Insert</button>
         </div>
-        <button type="button" class="btn btn-sm btn-warning fw-bold" data-insert-var=' data-link-key="cta_primary"'>Insert</button>
+      <% }) %>
+    </div>
+
+    <div class="text-muted small mb-2">Or insert just the tracking attribute on an existing link:</div>
+    <div class="d-flex align-items-center justify-content-between border rounded px-2 py-1 mb-3">
+      <div>
+        <code>data-link-key="…"</code>
+        <div class="text-muted" style="font-size:11px;">Add inside any <code>&lt;a&gt;</code> tag, then change the slug.</div>
       </div>
-      <div class="d-flex align-items-center justify-content-between border rounded px-2 py-1">
-        <div>
-          <code>{{cta_label}}</code>
-          <div class="text-muted" style="font-size:11px;">Default CTA button text</div>
-        </div>
-        <button type="button" class="btn btn-sm btn-warning fw-bold" data-insert-var="{{cta_label}}">Insert</button>
-      </div>
-      <div class="d-flex align-items-center justify-content-between border rounded px-2 py-1">
-        <div>
-          <code>{{cta_url}}</code>
-          <div class="text-muted" style="font-size:11px;">Default CTA destination URL</div>
-        </div>
-        <button type="button" class="btn btn-sm btn-warning fw-bold" data-insert-var="{{cta_url}}">Insert</button>
+      <button type="button" class="btn btn-sm btn-warning fw-bold" data-insert-var=' data-link-key="cta_primary"'>Insert</button>
+    </div>
+
+    <div class="alert alert-warning small py-2 mb-3">
+      <strong>Want one CTA the Send-page can override?</strong> Use these placeholders inside a
+      tracked button — the Send page lets the operator set the URL and label per campaign:
+      <div class="d-flex gap-1 mt-2">
+        <button type="button" class="btn btn-sm btn-outline-dark fw-bold flex-grow-1" data-insert-var="{{cta_url}}"><code>{{cta_url}}</code></button>
+        <button type="button" class="btn btn-sm btn-outline-dark fw-bold flex-grow-1" data-insert-var="{{cta_label}}"><code>{{cta_label}}</code></button>
       </div>
     </div>
 
@@ -254,26 +286,32 @@
     el.addEventListener('focus', function(){ lastFocused = el; });
   });
 
+  function insertFromAttr(btn, attr) {
+    var token = btn.getAttribute(attr) || '';
+    var target = lastFocused;
+    if (!target || target.tagName === 'INPUT') {
+      // Snippets only make sense in the HTML body; fall back to the open template's textarea.
+      var open = document.querySelector('details[open] textarea[data-tpl-html]')
+              || document.querySelector('textarea[data-tpl-html]');
+      if (attr === 'data-insert-snippet') target = open;
+      else target = target || open;
+    }
+    if (!target) {
+      alert('Click into the subject or HTML body first, then pick a variable.');
+      return;
+    }
+    insertAtCursor(target, token);
+    var id = target.getAttribute && target.getAttribute('data-tpl-html');
+    if (id) paint(id);
+    target.focus();
+    lastFocused = target;
+  }
+
   document.querySelectorAll('[data-insert-var]').forEach(function(btn){
-    btn.addEventListener('click', function(){
-      var token = btn.getAttribute('data-insert-var') || '';
-      var target = lastFocused;
-      if (!target) {
-        // Fall back to the body of the first open template.
-        var open = document.querySelector('details[open] textarea[data-tpl-html]')
-                || document.querySelector('textarea[data-tpl-html]');
-        target = open;
-      }
-      if (!target) {
-        alert('Click into the subject or HTML body first, then pick a variable.');
-        return;
-      }
-      insertAtCursor(target, token);
-      var id = target.getAttribute && target.getAttribute('data-tpl-html');
-      if (id) paint(id);
-      target.focus();
-      lastFocused = target;
-    });
+    btn.addEventListener('click', function(){ insertFromAttr(btn, 'data-insert-var'); });
+  });
+  document.querySelectorAll('[data-insert-snippet]').forEach(function(btn){
+    btn.addEventListener('click', function(){ insertFromAttr(btn, 'data-insert-snippet'); });
   });
 })();
 </script>
