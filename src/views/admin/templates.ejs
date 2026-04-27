@@ -5,7 +5,7 @@
       Drop in pre-built blocks, edit copy, preview live. CAN-SPAM footer is appended automatically at send time.
     </p>
   </div>
-  <button type="button" class="btn btn-warning fw-bold" data-bs-toggle="modal" data-bs-target="#vars-modal">
+  <button type="button" class="btn btn-warning fw-bold" data-bs-toggle="offcanvas" data-bs-target="#vars-drawer" aria-controls="vars-drawer">
     🛠 Customization options
   </button>
 </div>
@@ -85,114 +85,95 @@
   </details>
 <% }) %>
 
-<div class="modal fade" id="vars-modal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title fw-bold">🛠 Customization options</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <p class="text-secondary mb-3">
-          Click any <code>Insert</code> button below to drop that variable at the cursor of the
-          last field you clicked into (subject line or HTML body). Variables are wrapped with
-          <code>{{ }}</code> and replaced at send time.
-        </p>
+<div class="offcanvas offcanvas-end" tabindex="-1" id="vars-drawer" aria-labelledby="vars-drawer-label"
+     data-bs-backdrop="false" data-bs-scroll="true" style="width:420px;">
+  <div class="offcanvas-header bg-warning">
+    <h5 class="offcanvas-title fw-bold" id="vars-drawer-label">🛠 Customization options</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body small">
+    <p class="text-secondary mb-2">
+      Click <strong>Insert</strong> next to any variable to drop it at the cursor of the last field
+      you clicked into (Subject or HTML body). Tokens are replaced at send time.
+    </p>
 
-        <div class="alert alert-warning small">
-          <strong>Sender + persona always match automatically.</strong>
-          When you send from a mailbox (e.g. <code>sophia@bestbizz.co</code>) the
-          <em>From</em> header is built from that persona's record — the same record that fills
-          <code>{{persona_name}}</code>, <code>{{persona_title}}</code>, and
-          <code>{{persona_signature}}</code>. You don't need to keep them in sync by hand.
-          If you change the sending mailbox on the Send page, every persona variable updates with it.
+    <div class="alert alert-warning py-2 mb-3">
+      <strong>Sender ↔ persona auto-match.</strong>
+      The <em>From</em> header and every <code>{{persona_*}}</code> variable both pull from the
+      sending mailbox's persona record. Change the sending mailbox on the Send page and they all
+      update together — you never keep them in sync by hand.
+    </div>
+
+    <h6 class="fw-bold text-uppercase text-muted" style="font-size:11px;letter-spacing:.5px;">Client / lead</h6>
+    <div class="text-muted mb-2" style="font-size:12px;">Filled per recipient row.</div>
+    <div class="d-grid gap-1 mb-3">
+      <% [
+        ['first_name','First name','Sam'],
+        ['last_name','Last name','Lee'],
+        ['city','City','Austin'],
+        ['state','State','TX'],
+        ['zip','ZIP','78701'],
+        ['topic','Topic / keyword','this'],
+      ].forEach(function(v){ %>
+        <div class="d-flex align-items-center justify-content-between border rounded px-2 py-1">
+          <div>
+            <code>{{<%= v[0] %>}}</code>
+            <div class="text-muted" style="font-size:11px;"><%= v[1] %> · e.g. <%= v[2] %></div>
+          </div>
+          <button type="button" class="btn btn-sm btn-warning fw-bold" data-insert-var="{{<%= v[0] %>}}">Insert</button>
         </div>
+      <% }) %>
+    </div>
 
-        <h6 class="fw-bold mt-3 mb-2">Lead variables <span class="text-muted small fw-normal">— filled from each recipient row</span></h6>
-        <table class="table table-sm align-middle">
-          <tbody>
-            <% [
-              ['first_name','First name','Sam'],
-              ['last_name','Last name','Lee'],
-              ['city','City','Austin'],
-              ['state','State (2-letter)','TX'],
-              ['zip','ZIP','78701'],
-              ['topic','Topic / keyword tag','this'],
-            ].forEach(function(v){ %>
-              <tr>
-                <td><code>{{<%= v[0] %>}}</code></td>
-                <td><%= v[1] %></td>
-                <td class="text-muted small">e.g. <%= v[2] %></td>
-                <td class="text-end">
-                  <button type="button" class="btn btn-sm btn-outline-warning fw-bold" data-insert-var="{{<%= v[0] %>}}">Insert</button>
-                </td>
-              </tr>
-            <% }) %>
-          </tbody>
-        </table>
-
-        <h6 class="fw-bold mt-4 mb-2">Persona variables <span class="text-muted small fw-normal">— filled from the sending mailbox</span></h6>
-        <table class="table table-sm align-middle">
-          <tbody>
-            <% [
-              ['persona_name','Display name on the From header','Olivia Mitchell'],
-              ['persona_title','Title under the signature','Senior Outreach'],
-              ['persona_signature','Signature line (URL or tagline)','gtmone.co'],
-            ].forEach(function(v){ %>
-              <tr>
-                <td><code>{{<%= v[0] %>}}</code></td>
-                <td><%= v[1] %></td>
-                <td class="text-muted small">e.g. <%= v[2] %></td>
-                <td class="text-end">
-                  <button type="button" class="btn btn-sm btn-outline-warning fw-bold" data-insert-var="{{<%= v[0] %>}}">Insert</button>
-                </td>
-              </tr>
-            <% }) %>
-          </tbody>
-        </table>
-
-        <h6 class="fw-bold mt-4 mb-2">Call-to-action tracking</h6>
-        <p class="small text-secondary mb-2">
-          Add <code>data-link-key="some_slug"</code> to any <code>&lt;a&gt;</code> tag and we'll track
-          clicks under that label. Default CTA helpers also work as variables.
-        </p>
-        <table class="table table-sm align-middle">
-          <tbody>
-            <tr>
-              <td><code>data-link-key="cta_primary"</code></td>
-              <td>Tracks clicks on a specific link</td>
-              <td class="text-muted small">paste into &lt;a&gt; tag</td>
-              <td class="text-end">
-                <button type="button" class="btn btn-sm btn-outline-warning fw-bold" data-insert-var=' data-link-key="cta_primary"'>Insert</button>
-              </td>
-            </tr>
-            <tr>
-              <td><code>{{cta_label}}</code></td>
-              <td>Default CTA button text</td>
-              <td class="text-muted small">e.g. Learn more</td>
-              <td class="text-end">
-                <button type="button" class="btn btn-sm btn-outline-warning fw-bold" data-insert-var="{{cta_label}}">Insert</button>
-              </td>
-            </tr>
-            <tr>
-              <td><code>{{cta_url}}</code></td>
-              <td>Default CTA destination URL</td>
-              <td class="text-muted small">e.g. https://…</td>
-              <td class="text-end">
-                <button type="button" class="btn btn-sm btn-outline-warning fw-bold" data-insert-var="{{cta_url}}">Insert</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="text-muted small mt-3">
-          Tip: click into the <strong>Subject</strong> field or the <strong>HTML body</strong> textarea
-          first, then open this dialog and click <em>Insert</em>. The variable lands at your cursor.
+    <h6 class="fw-bold text-uppercase text-muted mt-3" style="font-size:11px;letter-spacing:.5px;">Persona / sender</h6>
+    <div class="text-muted mb-2" style="font-size:12px;">Filled from the sending mailbox.</div>
+    <div class="d-grid gap-1 mb-3">
+      <% [
+        ['persona_name','Display name on From header','Olivia Mitchell'],
+        ['persona_title','Title under signature','Senior Outreach'],
+        ['persona_signature','Signature line / URL','gtmone.co'],
+      ].forEach(function(v){ %>
+        <div class="d-flex align-items-center justify-content-between border rounded px-2 py-1">
+          <div>
+            <code>{{<%= v[0] %>}}</code>
+            <div class="text-muted" style="font-size:11px;"><%= v[1] %> · e.g. <%= v[2] %></div>
+          </div>
+          <button type="button" class="btn btn-sm btn-warning fw-bold" data-insert-var="{{<%= v[0] %>}}">Insert</button>
         </div>
+      <% }) %>
+    </div>
+
+    <h6 class="fw-bold text-uppercase text-muted mt-3" style="font-size:11px;letter-spacing:.5px;">Call-to-action</h6>
+    <div class="text-muted mb-2" style="font-size:12px;">
+      Add <code>data-link-key</code> to any <code>&lt;a&gt;</code> for click tracking.
+    </div>
+    <div class="d-grid gap-1 mb-3">
+      <div class="d-flex align-items-center justify-content-between border rounded px-2 py-1">
+        <div>
+          <code>data-link-key="cta_primary"</code>
+          <div class="text-muted" style="font-size:11px;">Track clicks on a specific link</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-warning fw-bold" data-insert-var=' data-link-key="cta_primary"'>Insert</button>
       </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      <div class="d-flex align-items-center justify-content-between border rounded px-2 py-1">
+        <div>
+          <code>{{cta_label}}</code>
+          <div class="text-muted" style="font-size:11px;">Default CTA button text</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-warning fw-bold" data-insert-var="{{cta_label}}">Insert</button>
       </div>
+      <div class="d-flex align-items-center justify-content-between border rounded px-2 py-1">
+        <div>
+          <code>{{cta_url}}</code>
+          <div class="text-muted" style="font-size:11px;">Default CTA destination URL</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-warning fw-bold" data-insert-var="{{cta_url}}">Insert</button>
+      </div>
+    </div>
+
+    <div class="text-muted" style="font-size:11px;">
+      Tip: this drawer stays open while you edit. Click into Subject or HTML body, then hit Insert —
+      the token lands right at your cursor.
     </div>
   </div>
 </div>
