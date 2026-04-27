@@ -1141,4 +1141,212 @@ export default async function adminRoutes(app) {
       return reply.redirect(`/admin/zapmail?flash=export_failed&err=${m}`);
     }
   });
+
+  // ==========================================================================
+  // Customers — every lead is a customer record. The person_id (stable hash of
+  // email + name + zip) is the customer number; xlsx re-uploads upsert against
+  // it so duplicate signal accumulates (tags, sends, clicks) instead of forking.
+  // ==========================================================================
+
+  app.get('/admin/customers', async (req, reply) => {
+    const q = (req.query.q || '').trim();
+    const tagFilter = (req.query.tag || '').trim();
+    const limit = Math.min(Number(req.query.limit) || 200, 1000);
+    const params = [];
+    const where = [];
+    if (q) {
+      params.push(`%${q}%`);
+      where.push(`(l.email ILIKE $${params.length} OR l.first_name ILIKE $${params.length} OR l.last_name ILIKE $${params.length} OR l.person_id ILIKE $${params.length})`);
+    }
+    if (tagFilter) {
+      params.push(tagFilter);
+      where.push(`EXISTS (SELECT 1 FROM lead_tags lt WHERE lt.lead_id = l.id AND lt.tag = $${params.length})`);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    params.push(limit);
+    const { rows } = await query(
+      `SELECT l.id, l.person_id, l.email, l.phone, l.first_name, l.last_name,
+              l.address, l.dnc, l.first_seen, l.last_seen,
+              (SELECT COUNT(*)::int FROM lead_tags lt WHERE lt.lead_id = l.id) AS tag_count,
+              (SELECT COUNT(*)::int FROM sends s WHERE s.lead_id = l.id) AS send_count,
+              (SELECT COUNT(*)::int FROM click_events ce JOIN sends s ON s.id = ce.send_id WHERE s.lead_id = l.id) AS click_count,
+              (SELECT MAX(ce.created_at) FROM click_events ce JOIN sends s ON s.id = ce.send_id WHERE s.lead_id = l.id) AS last_click_at
+         FROM leads l
+         ${whereSql}
+         ORDER BY l.last_seen DESC
+         LIMIT $${params.length}`,
+      params
+    );
+    const { rows: stats } = await query(
+      `SELECT
+         (SELECT COUNT(*)::bigint FROM leads) AS total_customers,
+         (SELECT COUNT(*)::bigint FROM lead_tags) AS total_tags,
+         (SELECT COUNT(*)::bigint FROM sends) AS total_sends,
+         (SELECT COUNT(*)::bigint FROM click_events) AS total_clicks`
+    );
+    const { rows: topTags } = await query(
+      `SELECT tag, COUNT(*)::int AS lead_count
+         FROM lead_tags GROUP BY tag ORDER BY lead_count DESC LIMIT 30`
+    );
+    return reply.view('admin/customers', {
+      user: req.user, customers: rows, stats: stats[0] || {},
+      topTags, q, tagFilter, limit,
+    });
+  });
+
+  app.get('/admin/customers/:id', async (req, reply) => {
+    const id = Number(req.params.id);
+    if (!id) return reply.code(404).send('Not found');
+    const { rows: leadRows } = await query('SELECT * FROM leads WHERE id = $1', [id]);
+    const lead = leadRows[0];
+    if (!lead) return reply.code(404).send('Customer not found');
+
+    const { rows: tags } = await query(
+      `SELECT tag, source, created_at FROM lead_tags WHERE lead_id = $1 ORDER BY created_at DESC`, [id]
+    );
+    const { rows: audiences } = await query(
+      `SELECT a.id, a.workflow_id, a.total_count, a.created_at
+         FROM audience_leads al JOIN audiences a ON a.id = al.audience_id
+        WHERE al.lead_id = $1 ORDER BY a.created_at DESC`, [id]
+    );
+    const { rows: sends } = await query(
+      `SELECT s.id, s.status, s.sent_at, s.opened_at, s.error,
+              c.name AS campaign_name, et.name AS template_name,
+              p.display_name AS persona_name, m.smtp_user AS mailbox_email,
+              (SELECT COUNT(*)::int FROM click_events ce WHERE ce.send_id = s.id) AS clicks
+         FROM sends s
+         LEFT JOIN campaigns c ON c.id = s.campaign_id
+         LEFT JOIN email_templates et ON et.id = c.template_id
+         LEFT JOIN personas p ON p.id = s.persona_id
+         LEFT JOIN mailboxes m ON m.id = s.mailbox_id
+        WHERE s.lead_id = $1 ORDER BY s.created_at DESC LIMIT 100`, [id]
+    );
+    const { rows: clicks } = await query(
+      `SELECT ce.link_key, ce.destination, ce.created_at, s.id AS send_id
+         FROM click_events ce JOIN sends s ON s.id = ce.send_id
+        WHERE s.lead_id = $1 ORDER BY ce.created_at DESC LIMIT 200`, [id]
+    );
+    const { rows: keywordIntent } = await query(
+      `SELECT ce.link_key, COUNT(*)::int AS clicks, MAX(ce.created_at) AS last_clicked
+         FROM click_events ce JOIN sends s ON s.id = ce.send_id
+        WHERE s.lead_id = $1
+        GROUP BY ce.link_key ORDER BY clicks DESC, last_clicked DESC`, [id]
+    );
+
+    return reply.view('admin/customer_detail', {
+      user: req.user, lead, tags, audiences, sends, clicks, keywordIntent,
+    });
+  });
+
+  // ==========================================================================
+  // Keyword cloud — every tag + every link_key, weighted by clicks. The richer
+  // the click history, the bigger the keyword renders.
+  // ==========================================================================
+
+  app.get('/admin/keywords', async (req, reply) => {
+    const { rows: tagCloud } = await query(
+      `SELECT lt.tag AS keyword,
+              COUNT(DISTINCT lt.lead_id)::int AS leads,
+              COALESCE((
+                SELECT COUNT(*)::int FROM click_events ce
+                  JOIN sends s ON s.id = ce.send_id
+                  JOIN lead_tags lt2 ON lt2.lead_id = s.lead_id
+                 WHERE lt2.tag = lt.tag
+              ), 0) AS clicks
+         FROM lead_tags lt
+         GROUP BY lt.tag
+         ORDER BY clicks DESC, leads DESC
+         LIMIT 200`
+    );
+    const { rows: linkCloud } = await query(
+      `SELECT link_key AS keyword, COUNT(*)::int AS clicks,
+              COUNT(DISTINCT s.lead_id)::int AS leads
+         FROM click_events ce JOIN sends s ON s.id = ce.send_id
+         GROUP BY link_key
+         ORDER BY clicks DESC LIMIT 200`
+    );
+    const { rows: cooccur } = await query(
+      `SELECT a.tag AS tag_a, b.tag AS tag_b, COUNT(*)::int AS shared
+         FROM lead_tags a JOIN lead_tags b ON a.lead_id = b.lead_id AND a.tag < b.tag
+         GROUP BY a.tag, b.tag
+         HAVING COUNT(*) > 1
+         ORDER BY shared DESC LIMIT 50`
+    );
+    return reply.view('admin/keywords', {
+      user: req.user, tagCloud, linkCloud, cooccur,
+    });
+  });
+
+  // ==========================================================================
+  // Cross-market engine — keywords with click momentum: today / 7d / 30d, with
+  // the network-wide leaderboard so "what's heating up" stays visible.
+  // ==========================================================================
+
+  app.get('/admin/cross-market', async (req, reply) => {
+    async function trending(interval) {
+      const { rows } = await query(
+        `SELECT ce.link_key AS keyword, COUNT(*)::int AS clicks,
+                COUNT(DISTINCT s.lead_id)::int AS leads
+           FROM click_events ce JOIN sends s ON s.id = ce.send_id
+          WHERE ce.created_at >= NOW() - $1::interval
+          GROUP BY ce.link_key
+          ORDER BY clicks DESC LIMIT 50`,
+        [interval]
+      );
+      return rows;
+    }
+    const today = await trending('1 day');
+    const week = await trending('7 days');
+    const month = await trending('30 days');
+    const { rows: top100 } = await query(
+      `SELECT ce.link_key AS keyword, COUNT(*)::int AS clicks,
+              COUNT(DISTINCT s.lead_id)::int AS leads,
+              MIN(ce.created_at) AS first_click,
+              MAX(ce.created_at) AS last_click
+         FROM click_events ce JOIN sends s ON s.id = ce.send_id
+         GROUP BY ce.link_key
+         ORDER BY clicks DESC LIMIT 100`
+    );
+    const { rows: traffic } = await query(
+      `SELECT date_trunc('day', created_at) AS day, COUNT(*)::int AS clicks
+         FROM click_events
+        WHERE created_at >= NOW() - INTERVAL '30 days'
+        GROUP BY 1 ORDER BY 1`
+    );
+    return reply.view('admin/cross_market', {
+      user: req.user, today, week, month, top100, traffic,
+    });
+  });
+
+  // ==========================================================================
+  // Value report — admin-only $ estimate. Click ≈ qualified lead. Conservative
+  // dollar value per click is configurable; defaults assume $25 EPC.
+  // ==========================================================================
+
+  app.get('/admin/value-report', async (req, reply) => {
+    const valuePerClick = Number(req.query.epc || 25);
+    const { rows: byKeyword } = await query(
+      `SELECT ce.link_key AS keyword, COUNT(*)::int AS clicks,
+              COUNT(DISTINCT s.lead_id)::int AS leads
+         FROM click_events ce JOIN sends s ON s.id = ce.send_id
+         GROUP BY ce.link_key ORDER BY clicks DESC LIMIT 100`
+    );
+    const { rows: byCustomer } = await query(
+      `SELECT l.id, l.person_id, l.email, l.first_name, l.last_name,
+              COUNT(ce.id)::int AS clicks
+         FROM leads l
+         JOIN sends s ON s.lead_id = l.id
+         JOIN click_events ce ON ce.send_id = s.id
+        GROUP BY l.id ORDER BY clicks DESC LIMIT 100`
+    );
+    const { rows: totals } = await query(
+      `SELECT
+         (SELECT COUNT(*)::bigint FROM click_events) AS clicks,
+         (SELECT COUNT(*)::bigint FROM sends) AS sends,
+         (SELECT COUNT(*)::bigint FROM leads) AS customers`
+    );
+    return reply.view('admin/value_report', {
+      user: req.user, valuePerClick, byKeyword, byCustomer, totals: totals[0] || {},
+    });
+  });
 }

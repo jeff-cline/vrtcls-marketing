@@ -1,0 +1,116 @@
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <a href="/admin/customers" class="text-muted small">← All customers</a>
+    <h1 class="fw-bold mb-1 mt-1">
+      <%= [lead.first_name, lead.last_name].filter(Boolean).join(' ') || '(no name)' %>
+    </h1>
+    <div class="text-muted small font-monospace">customer # <%= lead.person_id %></div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <% if (lead.email) { %>
+      <a href="mailto:<%= lead.email %>" class="btn btn-outline-secondary btn-sm">📧 <%= lead.email %></a>
+    <% } %>
+    <% if (lead.dnc) { %><span class="badge bg-danger">Email DNC</span><% } %>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="bg-white border rounded p-3">
+      <div class="fw-bold mb-2">Vitals</div>
+      <table class="table table-sm mb-0">
+        <tbody>
+          <tr><td class="text-muted">Email</td><td><%= lead.email || '—' %></td></tr>
+          <tr><td class="text-muted">Phone</td><td><%= lead.phone || '—' %></td></tr>
+          <tr><td class="text-muted">Address</td><td>
+            <% if (lead.address) { %>
+              <%= [lead.address.line1, lead.address.city, lead.address.state, lead.address.zip].filter(Boolean).join(', ') %>
+            <% } else { %>—<% } %>
+          </td></tr>
+          <tr><td class="text-muted">First seen</td><td><%= new Date(lead.first_seen).toLocaleString() %></td></tr>
+          <tr><td class="text-muted">Last seen</td><td><%= new Date(lead.last_seen).toLocaleString() %></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="bg-white border rounded p-3 h-100">
+      <div class="fw-bold mb-2">Keyword intent (clicks per keyword)</div>
+      <% if (keywordIntent.length === 0) { %>
+        <div class="text-muted small">No clicks recorded yet — intent builds as this customer engages with sent emails.</div>
+      <% } else { %>
+        <div class="d-flex flex-wrap gap-2">
+          <% keywordIntent.forEach(function(k){ %>
+            <span class="badge bg-warning text-dark" style="font-size:<%= Math.min(20, 11 + k.clicks * 1.5) %>px;">
+              <%= k.link_key %> · <%= k.clicks %>
+            </span>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-4">
+    <div class="bg-white border rounded p-3">
+      <div class="fw-bold mb-2">Tags / interests <span class="text-muted small fw-normal">(<%= tags.length %>)</span></div>
+      <% if (!tags.length) { %>
+        <div class="text-muted small">No tags yet.</div>
+      <% } else { %>
+        <% tags.forEach(function(t){ %>
+          <div class="d-flex justify-content-between align-items-center border-bottom py-1">
+            <code><%= t.tag %></code>
+            <span class="text-muted small"><%= new Date(t.created_at).toLocaleDateString() %></span>
+          </div>
+        <% }) %>
+      <% } %>
+    </div>
+  </div>
+
+  <div class="col-md-8">
+    <div class="bg-white border rounded p-3 mb-3">
+      <div class="fw-bold mb-2">Sends <span class="text-muted small fw-normal">(<%= sends.length %>)</span></div>
+      <% if (!sends.length) { %>
+        <div class="text-muted small">This customer has not received any campaign emails yet.</div>
+      <% } else { %>
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light"><tr>
+            <th>Campaign</th><th>From</th><th>Status</th><th class="text-end">Clicks</th><th class="text-end">When</th>
+          </tr></thead>
+          <tbody>
+            <% sends.forEach(function(s){ %>
+              <tr>
+                <td><%= s.campaign_name || '—' %><div class="text-muted small"><%= s.template_name || '' %></div></td>
+                <td class="small"><%= s.persona_name || '—' %><div class="text-muted"><%= s.mailbox_email || '' %></div></td>
+                <td><span class="badge bg-secondary"><%= s.status %></span><% if (s.opened_at) { %> <span class="badge bg-info text-dark">opened</span><% } %></td>
+                <td class="text-end <%= s.clicks > 0 ? 'fw-bold text-warning' : 'text-muted' %>"><%= s.clicks %></td>
+                <td class="text-end small text-muted"><%= s.sent_at ? new Date(s.sent_at).toLocaleDateString() : '—' %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+
+    <div class="bg-white border rounded p-3">
+      <div class="fw-bold mb-2">Click trail <span class="text-muted small fw-normal">(<%= clicks.length %>)</span></div>
+      <% if (!clicks.length) { %>
+        <div class="text-muted small">No clicks yet.</div>
+      <% } else { %>
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light"><tr><th>Keyword</th><th>Destination</th><th class="text-end">When</th></tr></thead>
+          <tbody>
+            <% clicks.forEach(function(c){ %>
+              <tr>
+                <td><code><%= c.link_key %></code></td>
+                <td class="small text-muted text-truncate" style="max-width:340px;"><%= c.destination %></td>
+                <td class="text-end small text-muted"><%= new Date(c.created_at).toLocaleString() %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </div>
+</div>

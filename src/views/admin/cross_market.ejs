@@ -1,0 +1,107 @@
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <h1 class="fw-bold mb-1">Cross-market engine</h1>
+    <p class="text-secondary mb-0">
+      Keyword click momentum across the network. As clicks rack up, fonts grow — that's where
+      future emails should focus, and where adjacent products earn the right to be cross-marketed.
+    </p>
+  </div>
+  <a href="/admin/keywords" class="btn btn-outline-secondary fw-bold">← Keyword cloud</a>
+</div>
+
+<%
+  function fontFor(weight, max) {
+    if (!max) return 14;
+    var pct = Math.min(1, weight / max);
+    return Math.round(13 + pct * 38);
+  }
+  var maxToday = today.reduce(function(m,t){ return Math.max(m, t.clicks); }, 1);
+  var maxWeek  = week.reduce (function(m,t){ return Math.max(m, t.clicks); }, 1);
+  var maxMonth = month.reduce(function(m,t){ return Math.max(m, t.clicks); }, 1);
+  var maxAll   = top100.reduce(function(m,t){ return Math.max(m, t.clicks); }, 1);
+  var maxTraffic = traffic.reduce(function(m,t){ return Math.max(m, t.clicks); }, 1);
+%>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-4">
+    <div class="bg-white border rounded p-3 h-100">
+      <div class="fw-bold mb-2">Trending today</div>
+      <% if (!today.length) { %><div class="text-muted small">No clicks today.</div><% } %>
+      <div class="d-flex flex-wrap gap-2 align-items-baseline">
+        <% today.forEach(function(t){ %>
+          <span style="font-size:<%= fontFor(t.clicks, maxToday) %>px;color:#b88200;font-weight:700;line-height:1.1;"
+                title="<%= t.clicks %> clicks · <%= t.leads %> leads"><%= t.keyword %></span>
+        <% }) %>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="bg-white border rounded p-3 h-100">
+      <div class="fw-bold mb-2">Trending — last 7 days</div>
+      <% if (!week.length) { %><div class="text-muted small">No clicks this week.</div><% } %>
+      <div class="d-flex flex-wrap gap-2 align-items-baseline">
+        <% week.forEach(function(t){ %>
+          <span style="font-size:<%= fontFor(t.clicks, maxWeek) %>px;color:#222;font-weight:600;line-height:1.1;"
+                title="<%= t.clicks %> clicks · <%= t.leads %> leads"><%= t.keyword %></span>
+        <% }) %>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="bg-white border rounded p-3 h-100">
+      <div class="fw-bold mb-2">Trending — last 30 days</div>
+      <% if (!month.length) { %><div class="text-muted small">No clicks in 30 days.</div><% } %>
+      <div class="d-flex flex-wrap gap-2 align-items-baseline">
+        <% month.forEach(function(t){ %>
+          <span style="font-size:<%= fontFor(t.clicks, maxMonth) %>px;color:#444;font-weight:600;line-height:1.1;"
+                title="<%= t.clicks %> clicks · <%= t.leads %> leads"><%= t.keyword %></span>
+        <% }) %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="bg-white border rounded p-3 mb-3">
+  <div class="fw-bold mb-2">Traffic — clicks per day (last 30)</div>
+  <% if (!traffic.length) { %>
+    <div class="text-muted small">No click traffic yet.</div>
+  <% } else { %>
+    <div class="d-flex align-items-end gap-1" style="height:120px;">
+      <% traffic.forEach(function(t){ %>
+        <div title="<%= new Date(t.day).toLocaleDateString() %> — <%= t.clicks %> clicks"
+             style="flex:1;background:#ffc107;height:<%= Math.max(2, Math.round((t.clicks/maxTraffic)*100)) %>%;border-radius:2px;"></div>
+      <% }) %>
+    </div>
+    <div class="d-flex justify-content-between text-muted small mt-1">
+      <span><%= traffic[0] ? new Date(traffic[0].day).toLocaleDateString() : '' %></span>
+      <span><%= traffic.length ? new Date(traffic[traffic.length-1].day).toLocaleDateString() : '' %></span>
+    </div>
+  <% } %>
+</div>
+
+<div class="bg-white border rounded p-3">
+  <div class="fw-bold mb-2">Top 100 keywords (all-time)</div>
+  <% if (!top100.length) { %>
+    <div class="text-muted small">No clicks tracked yet.</div>
+  <% } else { %>
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light"><tr>
+        <th style="width:40px;">#</th><th>Keyword</th>
+        <th class="text-end">Clicks</th><th class="text-end">Customers</th>
+        <th class="text-end">First click</th><th class="text-end">Last click</th>
+      </tr></thead>
+      <tbody>
+        <% top100.forEach(function(t, i){ %>
+          <tr>
+            <td class="text-muted"><%= i+1 %></td>
+            <td><strong style="font-size:<%= fontFor(t.clicks, maxAll) %>px;"><%= t.keyword %></strong></td>
+            <td class="text-end fw-bold text-warning"><%= t.clicks %></td>
+            <td class="text-end"><%= t.leads %></td>
+            <td class="text-end small text-muted"><%= new Date(t.first_click).toLocaleDateString() %></td>
+            <td class="text-end small text-muted"><%= new Date(t.last_click).toLocaleDateString() %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>

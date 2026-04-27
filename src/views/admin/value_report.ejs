@@ -1,0 +1,111 @@
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <h1 class="fw-bold mb-1">Value report <span class="badge bg-danger">admin only</span></h1>
+    <p class="text-secondary mb-0">
+      Conservative dollar estimate based on clicks-as-qualified-leads. Adjust EPC
+      (earnings per click) to match the vertical you're modeling.
+    </p>
+  </div>
+  <form method="get" action="/admin/value-report" class="d-flex gap-2 align-items-center m-0">
+    <label class="small text-muted mb-0">EPC ($)</label>
+    <input name="epc" type="number" step="0.01" value="<%= valuePerClick %>" class="form-control form-control-sm" style="width:100px;">
+    <button class="btn btn-sm btn-warning fw-bold">Update</button>
+  </form>
+</div>
+
+<%
+  var totalClicks = Number(totals.clicks || 0);
+  var totalSends  = Number(totals.sends || 0);
+  var totalCust   = Number(totals.customers || 0);
+  var totalValue  = totalClicks * valuePerClick;
+  var ctr = totalSends > 0 ? (totalClicks / totalSends * 100) : 0;
+%>
+
+<div class="row g-2 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="bg-warning border rounded p-3 text-center">
+      <div class="small">Network value (est.)</div>
+      <div class="fs-3 fw-bold">$<%= totalValue.toLocaleString(undefined,{maximumFractionDigits:0}) %></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="bg-white border rounded p-3 text-center">
+      <div class="text-muted small">Total clicks</div>
+      <div class="fs-4 fw-bold"><%= totalClicks.toLocaleString() %></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="bg-white border rounded p-3 text-center">
+      <div class="text-muted small">Total sends</div>
+      <div class="fs-4 fw-bold"><%= totalSends.toLocaleString() %></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="bg-white border rounded p-3 text-center">
+      <div class="text-muted small">CTR</div>
+      <div class="fs-4 fw-bold"><%= ctr.toFixed(2) %>%</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="bg-white border rounded p-3">
+      <div class="fw-bold mb-2">Estimated value by keyword</div>
+      <% if (!byKeyword.length) { %>
+        <div class="text-muted small">No clicks yet — value report fills in once campaigns start landing clicks.</div>
+      <% } else { %>
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light"><tr>
+            <th>Keyword</th><th class="text-end">Clicks</th><th class="text-end">Customers</th><th class="text-end">Value</th>
+          </tr></thead>
+          <tbody>
+            <% byKeyword.forEach(function(k){ %>
+              <tr>
+                <td><strong><%= k.keyword %></strong></td>
+                <td class="text-end"><%= k.clicks %></td>
+                <td class="text-end"><%= k.leads %></td>
+                <td class="text-end fw-bold">$<%= (k.clicks * valuePerClick).toLocaleString(undefined,{maximumFractionDigits:0}) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="bg-white border rounded p-3">
+      <div class="fw-bold mb-2">Top customers by intent (clicks)</div>
+      <% if (!byCustomer.length) { %>
+        <div class="text-muted small">No customer-level click data yet.</div>
+      <% } else { %>
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light"><tr>
+            <th>Customer</th><th class="text-end">Clicks</th><th class="text-end">Value</th>
+          </tr></thead>
+          <tbody>
+            <% byCustomer.forEach(function(c){ %>
+              <tr>
+                <td>
+                  <a href="/admin/customers/<%= c.id %>" class="text-decoration-none">
+                    <strong><%= [c.first_name, c.last_name].filter(Boolean).join(' ') || c.email || c.person_id %></strong>
+                  </a>
+                  <div class="text-muted small"><%= c.email %></div>
+                </td>
+                <td class="text-end fw-bold text-warning"><%= c.clicks %></td>
+                <td class="text-end fw-bold">$<%= (c.clicks * valuePerClick).toLocaleString(undefined,{maximumFractionDigits:0}) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<div class="alert alert-secondary small mt-4 mb-0">
+  Methodology: <strong>value = clicks × EPC</strong>. EPC defaults to $25 — change in the box above
+  to model a higher-value vertical (insurance leads, luxury services). This is a network-floor estimate;
+  closed-customer LTV will be tracked once the post-click conversion pixel is wired in.
+</div>

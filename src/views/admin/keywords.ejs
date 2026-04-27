@@ -1,0 +1,86 @@
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <h1 class="fw-bold mb-1">Keyword + interest cloud</h1>
+    <p class="text-secondary mb-0">
+      Every tag from imports plus every <code>data-link-key</code> click. Bigger font = more
+      network demand. Adjacent tags suggest cross-marketing angles.
+    </p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/admin/customers" class="btn btn-outline-secondary fw-bold">← Customers</a>
+    <a href="/admin/cross-market" class="btn btn-warning fw-bold">📈 Cross-market engine</a>
+  </div>
+</div>
+
+<%
+  function fontFor(weight, max) {
+    if (!max) return 14;
+    var pct = Math.min(1, weight / max);
+    return Math.round(12 + pct * 36);
+  }
+  var maxTagWeight = tagCloud.reduce(function(m,t){ return Math.max(m, t.clicks * 3 + t.leads); }, 1);
+  var maxLinkWeight = linkCloud.reduce(function(m,t){ return Math.max(m, t.clicks); }, 1);
+%>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="bg-white border rounded p-3">
+      <div class="fw-bold mb-2">Imported interests <span class="text-muted small fw-normal">(tag library)</span></div>
+      <% if (!tagCloud.length) { %>
+        <div class="text-muted small">No tags yet — import a spreadsheet with a <em>tag</em> column.</div>
+      <% } %>
+      <div class="d-flex flex-wrap gap-2 align-items-baseline">
+        <% tagCloud.forEach(function(t){ %>
+          <%
+            var weight = t.clicks * 3 + t.leads;
+            var size = fontFor(weight, maxTagWeight);
+            var hot = t.clicks > 0;
+          %>
+          <a href="/admin/customers?tag=<%= encodeURIComponent(t.keyword) %>"
+             class="text-decoration-none <%= hot ? 'text-warning' : 'text-dark' %>"
+             style="font-size:<%= size %>px;line-height:1.1;font-weight:<%= hot ? 700 : 500 %>;"
+             title="<%= t.leads %> leads · <%= t.clicks %> clicks">
+            <%= t.keyword %>
+          </a>
+        <% }) %>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="bg-white border rounded p-3 mb-3">
+      <div class="fw-bold mb-2">Click intent (link keys)</div>
+      <% if (!linkCloud.length) { %>
+        <div class="text-muted small">No clicks yet. Tag CTAs with <code>data-link-key</code>.</div>
+      <% } %>
+      <div class="d-flex flex-wrap gap-2 align-items-baseline">
+        <% linkCloud.forEach(function(t){ %>
+          <span style="font-size:<%= fontFor(t.clicks, maxLinkWeight) %>px;color:#b88200;font-weight:700;line-height:1.1;"
+                title="<%= t.leads %> customers · <%= t.clicks %> clicks">
+            <%= t.keyword %>
+          </span>
+        <% }) %>
+      </div>
+    </div>
+
+    <div class="bg-white border rounded p-3">
+      <div class="fw-bold mb-2">Adjacent interests <span class="text-muted small fw-normal">(co-occurring tags)</span></div>
+      <% if (!cooccur.length) { %>
+        <div class="text-muted small">Need more imports before adjacency surfaces.</div>
+      <% } else { %>
+        <table class="table table-sm mb-0">
+          <thead class="table-light"><tr><th>Tag A</th><th>Tag B</th><th class="text-end">Shared customers</th></tr></thead>
+          <tbody>
+            <% cooccur.forEach(function(c){ %>
+              <tr>
+                <td><code><%= c.tag_a %></code></td>
+                <td><code><%= c.tag_b %></code></td>
+                <td class="text-end fw-bold"><%= c.shared %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </div>
+</div>

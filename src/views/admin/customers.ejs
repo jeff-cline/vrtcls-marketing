@@ -1,0 +1,115 @@
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <h1 class="fw-bold mb-1">Customers</h1>
+    <p class="text-secondary mb-0">
+      Every uploaded contact becomes a customer record keyed on a stable <code>person_id</code>
+      (email + name + zip). Re-uploading the same person merges signal — tags, sends, and clicks
+      accumulate against the same record so intent gets sharper over time.
+    </p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/admin/keywords" class="btn btn-outline-warning fw-bold">🏷 Keyword cloud</a>
+    <a href="/admin/cross-market" class="btn btn-outline-warning fw-bold">📈 Cross-market</a>
+    <a href="/admin/value-report" class="btn btn-outline-dark fw-bold">💰 Value report</a>
+  </div>
+</div>
+
+<div class="row g-2 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="bg-white border rounded p-3 text-center">
+      <div class="text-muted small">Customers</div>
+      <div class="fs-4 fw-bold"><%= Number(stats.total_customers || 0).toLocaleString() %></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="bg-white border rounded p-3 text-center">
+      <div class="text-muted small">Tags / interests</div>
+      <div class="fs-4 fw-bold"><%= Number(stats.total_tags || 0).toLocaleString() %></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="bg-white border rounded p-3 text-center">
+      <div class="text-muted small">Sends</div>
+      <div class="fs-4 fw-bold"><%= Number(stats.total_sends || 0).toLocaleString() %></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="bg-white border rounded p-3 text-center">
+      <div class="text-muted small">Clicks (intent)</div>
+      <div class="fs-4 fw-bold text-warning"><%= Number(stats.total_clicks || 0).toLocaleString() %></div>
+    </div>
+  </div>
+</div>
+
+<form method="get" action="/admin/customers" class="row g-2 mb-3">
+  <div class="col-md-6">
+    <input name="q" class="form-control" placeholder="Search by name, email, or customer #" value="<%= q %>">
+  </div>
+  <div class="col-md-3">
+    <select name="tag" class="form-select">
+      <option value="">— filter by tag —</option>
+      <% topTags.forEach(function(t){ %>
+        <option value="<%= t.tag %>" <%= tagFilter === t.tag ? 'selected' : '' %>>
+          <%= t.tag %> (<%= t.lead_count %>)
+        </option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select name="limit" class="form-select">
+      <% [100,200,500,1000].forEach(function(n){ %>
+        <option value="<%= n %>" <%= Number(limit) === n ? 'selected' : '' %>><%= n %> rows</option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="col-md-1">
+    <button class="btn btn-warning fw-bold w-100">Go</button>
+  </div>
+</form>
+
+<div class="bg-white border rounded">
+  <table class="table table-hover align-middle mb-0">
+    <thead class="table-light">
+      <tr>
+        <th style="width:18%;">Customer #</th>
+        <th>Name</th>
+        <th>Email / phone</th>
+        <th>Location</th>
+        <th class="text-end">Tags</th>
+        <th class="text-end">Sends</th>
+        <th class="text-end">Clicks</th>
+        <th class="text-end">Last seen</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% customers.forEach(function(c){ %>
+        <tr style="cursor:pointer;" onclick="location.href='/admin/customers/<%= c.id %>'">
+          <td class="font-monospace small text-muted"><%= c.person_id %></td>
+          <td><strong><%= [c.first_name, c.last_name].filter(Boolean).join(' ') || '—' %></strong></td>
+          <td class="small">
+            <div><%= c.email || '—' %></div>
+            <% if (c.phone) { %><div class="text-muted"><%= c.phone %></div><% } %>
+          </td>
+          <td class="small text-muted">
+            <% if (c.address) { %>
+              <%= [c.address.city, c.address.state, c.address.zip].filter(Boolean).join(', ') %>
+            <% } else { %>—<% } %>
+          </td>
+          <td class="text-end"><%= c.tag_count %></td>
+          <td class="text-end"><%= c.send_count %></td>
+          <td class="text-end <%= c.click_count > 0 ? 'fw-bold text-warning' : 'text-muted' %>">
+            <%= c.click_count %>
+          </td>
+          <td class="text-end small text-muted">
+            <%= c.last_seen ? new Date(c.last_seen).toLocaleDateString() : '—' %>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (!customers.length) { %>
+        <tr><td colspan="8" class="text-muted text-center py-4">
+          No customers match. Import a spreadsheet from <a href="/admin/import">Import</a>.
+        </td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
