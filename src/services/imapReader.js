@@ -11,6 +11,9 @@ export async function syncMailboxInbox(mailbox, limit = 50) {
     secure: mailbox.imap_secure !== false,
     auth: { user: mailbox.smtp_user, pass: mailbox.smtp_pass },
     logger: false,
+    connectionTimeout: 30000,
+    greetingTimeout: 20000,
+    socketTimeout: 60000,
   });
 
   let fetched = 0;
@@ -28,16 +31,29 @@ export async function syncMailboxInbox(mailbox, limit = 50) {
       const start = Math.max(1, total - limit + 1);
       const range = `${start}:${total}`;
 
+      // Collect raw envelopes/sources first — running nested IMAP calls
+      // (fetchOne/download) inside the for-await below would deadlock on
+      // the same connection.
+      const collected = [];
       for await (const msg of client.fetch(range, {
         uid: true,
         envelope: true,
         internalDate: true,
-        bodyStructure: true,
         source: true,
         flags: true,
       })) {
+        collected.push({
+          uid: msg.uid,
+          envelope: msg.envelope || {},
+          internalDate: msg.internalDate,
+          flags: msg.flags || new Set(),
+          source: msg.source ? Buffer.from(msg.source).toString('utf-8') : '',
+        });
+      }
+
+      for (const msg of collected) {
         fetched++;
-        const env = msg.envelope || {};
+        const env = msg.envelope;
         const fromAddr = env.from?.[0]?.address || null;
         const fromName = env.from?.[0]?.name || null;
         const toAddrs  = (env.to || []).map((t) => t.address).filter(Boolean).join(', ') || null;
@@ -46,9 +62,9 @@ export async function syncMailboxInbox(mailbox, limit = 50) {
         const inReplyTo = env.inReplyTo || null;
         const received  = msg.internalDate ? new Date(msg.internalDate) : new Date();
 
-        const { bodyText, bodyHtml } = await extractBody(client, msg.uid);
+        const { bodyText, bodyHtml } = parseBody(msg.source);
         const snippet = (bodyText || '').replace(/\s+/g, ' ').trim().slice(0, 200);
-        const isRead  = (msg.flags || new Set()).has('\\Seen');
+        const isRead  = msg.flags.has('\\Seen');
 
         const result = await query(
           `INSERT INTO inbox_messages
@@ -81,35 +97,56 @@ export async function syncMailboxInbox(mailbox, limit = 50) {
   return { fetched, inserted };
 }
 
-async function extractBody(client, uid) {
-  // Pull the first text/plain and text/html parts. Cheap heuristic that works
-  // for almost every real email.
-  let bodyText = null;
-  let bodyHtml = null;
-  try {
-    const textRes = await client.fetchOne(uid, { bodyParts: ['1'], source: true }, { uid: true });
-    if (textRes?.source) {
-      const raw = textRes.source.toString('utf-8');
-      const match = raw.match(/\r?\n\r?\n([\s\S]+)$/);
-      if (match) bodyText = match[1].slice(0, 50000);
+// Parse the RFC822 source already retrieved in the outer fetch. No IMAP
+// roundtrips here, so this can't deadlock the connection.
+function parseBody(raw) {
+  if (!raw) return { bodyText: null, bodyHtml: null };
+  const splitIdx = raw.indexOf('\r\n\r\n');
+  if (splitIdx < 0) return { bodyText: null, bodyHtml: null };
+  const headers = raw.slice(0, splitIdx);
+  const body = raw.slice(splitIdx + 4);
+
+  const ct = (headers.match(/^content-type:\s*([^\r\n]+)/im) || [])[1] || '';
+  const boundaryMatch = ct.match(/boundary="?([^";\r\n]+)"?/i);
+
+  let bodyText = null, bodyHtml = null;
+
+  if (boundaryMatch) {
+    const boundary = '--' + boundaryMatch[1];
+    const parts = body.split(boundary);
+    for (const part of parts) {
+      const i = part.indexOf('\r\n\r\n');
+      if (i < 0) continue;
+      const partHeaders = part.slice(0, i);
+      const partBody = part.slice(i + 4);
+      const partCt = (partHeaders.match(/^content-type:\s*([^\r\n;]+)/im) || [])[1] || '';
+      const enc = (partHeaders.match(/^content-transfer-encoding:\s*([^\r\n]+)/im) || [])[1] || '';
+      const decoded = decodePart(partBody, enc.toLowerCase().trim());
+      if (/^text\/html/i.test(partCt) && !bodyHtml) bodyHtml = decoded.slice(0, 100000);
+      else if (/^text\/plain/i.test(partCt) && !bodyText) bodyText = decoded.slice(0, 50000);
     }
-  } catch {}
-  try {
-    const part = await client.download(uid, undefined, { uid: true });
-    if (part?.content) {
-      const chunks = [];
-      for await (const chunk of part.content) chunks.push(chunk);
-      const raw = Buffer.concat(chunks).toString('utf-8');
-      // crude split on first blank line
-      const i = raw.indexOf('\r\n\r\n');
-      if (i > -1) {
-        const body = raw.slice(i + 4);
-        if (/<html|<body|<p[ >]/i.test(body)) bodyHtml = body.slice(0, 100000);
-        if (!bodyText) bodyText = body.replace(/<[^>]+>/g, '').slice(0, 50000);
-      }
-    }
-  } catch {}
+  } else {
+    const enc = (headers.match(/^content-transfer-encoding:\s*([^\r\n]+)/im) || [])[1] || '';
+    const decoded = decodePart(body, enc.toLowerCase().trim());
+    if (/text\/html/i.test(ct)) bodyHtml = decoded.slice(0, 100000);
+    bodyText = decoded.replace(/<[^>]+>/g, '').slice(0, 50000);
+  }
+
+  if (!bodyText && bodyHtml) bodyText = bodyHtml.replace(/<[^>]+>/g, '').slice(0, 50000);
   return { bodyText, bodyHtml };
+}
+
+function decodePart(body, enc) {
+  if (enc === 'base64') {
+    try { return Buffer.from(body.replace(/\s+/g, ''), 'base64').toString('utf-8'); }
+    catch { return body; }
+  }
+  if (enc === 'quoted-printable') {
+    return body
+      .replace(/=\r?\n/g, '')
+      .replace(/=([0-9A-Fa-f]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+  }
+  return body;
 }
 
 // Mark a message read both in our DB and on the IMAP server.
@@ -127,6 +164,9 @@ export async function markMessageRead(mailbox, messageId) {
     secure: mailbox.imap_secure !== false,
     auth: { user: mailbox.smtp_user, pass: mailbox.smtp_pass },
     logger: false,
+    connectionTimeout: 30000,
+    greetingTimeout: 20000,
+    socketTimeout: 60000,
   });
   try {
     await client.connect();
