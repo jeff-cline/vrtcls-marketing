@@ -62,12 +62,13 @@ export async function renderEmail({ template, lead, sendId, persona, sampleMode 
   const unsub = sampleMode ? `${config.baseUrl}/u/preview` : `${config.baseUrl}/u/${sendId}`;
   html = html + canSpamFooter(config.companyAddress, unsub);
 
+  // Test sends look identical to production sends — same subject, same body,
+  // no [TEST] prefix, no preview banner. Spam filters score "test" as spammy
+  // and the admin needs to see the actual deliverability of the real message.
+  // The only difference is link/pixel rewriting is skipped so test recipients
+  // don't pollute open/click metrics.
   if (sampleMode) {
-    const previewBanner = `
-      <div style="background:#fff7d6;border:1px solid #f0c000;color:#5a4500;padding:8px 12px;font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:12px;border-radius:4px;margin-bottom:12px;">
-        Test send — link tracking + open pixel are off, but the CAN-SPAM footer below is identical to production.
-      </div>`;
-    return { subject: `[TEST] ${subject}`, html: previewBanner + html };
+    return { subject, html };
   }
 
   html = rewriteLinks(html, { sendId, baseUrl: config.baseUrl });
