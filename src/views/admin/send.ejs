@@ -1,5 +1,22 @@
-<h1 class="fw-bold mb-3">Admin send</h1>
-<p class="text-secondary">Send to a specific user's leads, or to every lead carrying a tag (across the database). One token per send.</p>
+<h1 class="fw-bold mb-1">Admin send</h1>
+<p class="text-secondary">
+  Send to a specific user's leads, or to every lead carrying a tag (across the database).
+  One token per send. Sends are paced through every active mailbox at 50/persona/day in the 9am–6pm window.
+</p>
+
+<% if (flashErr) { %>
+  <div class="alert alert-danger d-flex justify-content-between align-items-center">
+    <div><strong>Couldn't send:</strong> <%= flashErr %></div>
+    <a href="/admin/send" class="btn btn-sm btn-outline-dark">Reset form</a>
+  </div>
+<% } %>
+
+<% if (mailboxes.length === 0) { %>
+  <div class="alert alert-warning">
+    <strong>No active mailboxes.</strong> You need at least one active mailbox to send.
+    <a href="/admin/mailboxes">Provision one →</a>
+  </div>
+<% } %>
 
 <form method="post" action="/admin/send" class="bg-white p-4 border rounded">
   <div class="row g-3">
@@ -8,14 +25,16 @@
       <select name="target_user_id" class="form-select">
         <option value="">— Any user / use tag below —</option>
         <% users.forEach(function(u) { %>
-          <option value="<%= u.id %>"><%= u.email %> (<%= u.lead_count %> leads)</option>
+          <option value="<%= u.id %>" <%= String(preserved.target_user_id) === String(u.id) ? 'selected' : '' %>>
+            <%= u.email %> (<%= u.lead_count %> leads)
+          </option>
         <% }) %>
       </select>
       <div class="form-text">If selected, sends only to leads owned by this user.</div>
     </div>
     <div class="col-md-6">
       <label class="form-label fw-bold">Tag / keyword (optional)</label>
-      <input name="tag" class="form-control" list="tag-list" placeholder="term_life, stem_cells, clicked:offer">
+      <input name="tag" class="form-control" list="tag-list" placeholder="term_life, stem_cells, clicked:offer" value="<%= preserved.tag %>">
       <datalist id="tag-list">
         <% tags.forEach(function(t) { %>
           <option value="<%= t.tag %>"><%= t.tag %> (<%= t.n %>)</option>
@@ -26,14 +45,17 @@
     <div class="col-md-6">
       <label class="form-label fw-bold">Template</label>
       <select name="template_id" class="form-select" required>
+        <option value="">— pick a template —</option>
         <% templates.forEach(function(t) { %>
-          <option value="<%= t.id %>"><%= t.name %> — "<%= t.subject %>"</option>
+          <option value="<%= t.id %>" <%= String(preserved.template_id) === String(t.id) ? 'selected' : '' %>>
+            <%= t.name %> — "<%= t.subject %>"
+          </option>
         <% }) %>
       </select>
     </div>
     <div class="col-md-6">
       <label class="form-label fw-bold">Campaign name</label>
-      <input name="campaign_name" class="form-control" required maxlength="200" placeholder="Q2 push · stem cells">
+      <input name="campaign_name" class="form-control" required maxlength="200" placeholder="Q2 push · stem cells" value="<%= preserved.campaign_name %>">
     </div>
     <div class="col-12">
       <div class="form-check">
@@ -42,7 +64,40 @@
       </div>
     </div>
   </div>
-  <div class="mt-3 text-end">
-    <button class="btn btn-warning fw-bold">Send</button>
+  <div class="mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div class="text-muted small">
+      After Send: leads are pre-flighted (DNC/suppressed/no-email are dropped), the rest are queued
+      and you'll land on the live campaign page where you can watch progress.
+    </div>
+    <button class="btn btn-warning fw-bold px-4">Send →</button>
   </div>
 </form>
+
+<div class="row g-3 mt-3">
+  <div class="col-md-6">
+    <div class="bg-white border rounded p-3 small">
+      <div class="fw-bold mb-2">What "Send" actually does</div>
+      <ol class="ps-3 mb-0">
+        <li><strong>Pre-flight</strong> the audience — count matched, drop no-email / DNC / suppressed.</li>
+        <li><strong>Open a campaign</strong> with status <code>sending</code>.</li>
+        <li><strong>Round-robin enqueue</strong> across <%= mailboxes.length %> active mailbox<%= mailboxes.length === 1 ? '' : 'es' %> at 50/persona/day, paced 9am–6pm.</li>
+        <li><strong>Worker drains</strong> queued sends every 30s. Each click writes <code>click_events</code> back to the customer.</li>
+        <li><strong>Live page</strong> shows queued / sending / sent / failed and auto-refreshes.</li>
+      </ol>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="bg-white border rounded p-3 small">
+      <div class="fw-bold mb-2">Active mailboxes used for round-robin</div>
+      <% if (mailboxes.length === 0) { %>
+        <div class="text-muted">None — no sends will go out until a mailbox is provisioned.</div>
+      <% } else { %>
+        <ul class="mb-0 ps-3">
+          <% mailboxes.forEach(function(m){ %>
+            <li><strong><%= m.label %></strong> · <%= m.smtp_user %></li>
+          <% }) %>
+        </ul>
+      <% } %>
+    </div>
+  </div>
+</div>

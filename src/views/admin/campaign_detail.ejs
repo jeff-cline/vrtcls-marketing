@@ -1,0 +1,165 @@
+<% if (pending > 0) { %><meta http-equiv="refresh" content="5"><% } %>
+
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <a href="/admin/send" class="text-muted small">← Back to send</a>
+    <h1 class="fw-bold mb-1 mt-1"><%= campaign.name %></h1>
+    <div class="text-muted small">
+      Campaign #<%= campaign.id %> · template
+      <strong><%= campaign.template_name || '—' %></strong> · owner
+      <strong><%= campaign.owner_email || '—' %></strong> · status
+      <span class="badge <%= campaign.status === 'sent' ? 'bg-success' : (campaign.status === 'paused' ? 'bg-secondary' : 'bg-warning text-dark') %>">
+        <%= campaign.status %>
+      </span>
+    </div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <% if (campaign.status === 'sending') { %>
+      <form method="post" action="/admin/campaigns/<%= campaign.id %>/pause" class="m-0">
+        <button class="btn btn-outline-secondary fw-bold">⏸ Pause</button>
+      </form>
+    <% } else if (campaign.status === 'paused') { %>
+      <form method="post" action="/admin/campaigns/<%= campaign.id %>/resume" class="m-0">
+        <button class="btn btn-warning fw-bold">▶ Resume</button>
+      </form>
+    <% } %>
+    <a href="/admin/cross-market" class="btn btn-outline-warning fw-bold">📈 Cross-market</a>
+    <a href="/admin/customers" class="btn btn-outline-dark fw-bold">👥 Customers</a>
+  </div>
+</div>
+
+<% if (pending > 0) { %>
+  <div class="alert alert-info py-2 small">
+    🔄 <strong>Live</strong> — auto-refreshing every 5 seconds while sends are in flight.
+    <%= Number(stats.queued || 0) %> queued, <%= Number(stats.sending || 0) %> dispatching now.
+    <% if (stats.next_send_at) { %>
+      Next send around <%= new Date(stats.next_send_at).toLocaleString() %>.
+    <% } %>
+    <% if (stats.last_send_at) { %>
+      Last queued for <%= new Date(stats.last_send_at).toLocaleString() %>.
+    <% } %>
+  </div>
+<% } else if (campaign.status === 'sent') { %>
+  <div class="alert alert-success py-2 small">
+    ✅ <strong>All sends resolved.</strong>
+    <%= Number(stats.sent || 0) %> delivered,
+    <%= Number(stats.failed || 0) %> failed,
+    <%= Number(stats.skipped || 0) + Number(stats.suppressed || 0) %> skipped.
+    Clicks so far: <%= Number(stats.clicks || 0) %>.
+  </div>
+<% } else if (campaign.status === 'paused') { %>
+  <div class="alert alert-warning py-2 small">
+    ⏸ <strong>Paused.</strong> No more sends will dispatch until you resume.
+  </div>
+<% } %>
+
+<% if (preflight) { %>
+  <div class="bg-white border rounded p-3 mb-3">
+    <div class="fw-bold mb-2">Pre-flight summary</div>
+    <div class="row g-2 small">
+      <div class="col-6 col-md-3">Matched the filter <strong class="d-block fs-5"><%= preflight.matched %></strong></div>
+      <div class="col-6 col-md-3 text-success">Queued for send <strong class="d-block fs-5"><%= preflight.queued %></strong></div>
+      <div class="col-6 col-md-2 text-muted">No email <strong class="d-block fs-5"><%= preflight.no_email %></strong></div>
+      <div class="col-6 col-md-2 text-muted">DNC <strong class="d-block fs-5"><%= preflight.dnc %></strong></div>
+      <div class="col-6 col-md-2 text-muted">Suppressed <strong class="d-block fs-5"><%= preflight.suppressed %></strong></div>
+    </div>
+    <div class="text-muted small mt-2">
+      Spread across <strong><%= preflight.mailboxes %></strong> active mailbox<%= preflight.mailboxes === 1 ? '' : 'es' %> in round-robin order.
+    </div>
+  </div>
+<% } %>
+
+<%
+  var total = Number(stats.total || 0);
+  function pct(n) { return total > 0 ? Math.round(Number(n||0)/total*100) : 0; }
+%>
+
+<div class="row g-2 mb-3">
+  <div class="col-6 col-md">
+    <div class="bg-white border rounded p-3 text-center">
+      <div class="text-muted small">Queued</div>
+      <div class="fs-4 fw-bold"><%= Number(stats.queued || 0) %></div>
+      <div class="text-muted" style="font-size:11px;"><%= pct(stats.queued) %>%</div>
+    </div>
+  </div>
+  <div class="col-6 col-md">
+    <div class="bg-white border rounded p-3 text-center">
+      <div class="text-muted small">Sending</div>
+      <div class="fs-4 fw-bold text-warning"><%= Number(stats.sending || 0) %></div>
+      <div class="text-muted" style="font-size:11px;"><%= pct(stats.sending) %>%</div>
+    </div>
+  </div>
+  <div class="col-6 col-md">
+    <div class="bg-success text-white border rounded p-3 text-center">
+      <div class="small opacity-75">Sent</div>
+      <div class="fs-4 fw-bold"><%= Number(stats.sent || 0) %></div>
+      <div class="opacity-75" style="font-size:11px;"><%= pct(stats.sent) %>%</div>
+    </div>
+  </div>
+  <div class="col-6 col-md">
+    <div class="bg-white border rounded p-3 text-center">
+      <div class="text-muted small">Failed</div>
+      <div class="fs-4 fw-bold text-danger"><%= Number(stats.failed || 0) %></div>
+      <div class="text-muted" style="font-size:11px;"><%= pct(stats.failed) %>%</div>
+    </div>
+  </div>
+  <div class="col-6 col-md">
+    <div class="bg-white border rounded p-3 text-center">
+      <div class="text-muted small">Skipped</div>
+      <div class="fs-4 fw-bold text-muted"><%= Number(stats.skipped || 0) + Number(stats.suppressed || 0) %></div>
+      <div class="text-muted" style="font-size:11px;"><%= pct(Number(stats.skipped || 0) + Number(stats.suppressed || 0)) %>%</div>
+    </div>
+  </div>
+  <div class="col-6 col-md">
+    <div class="bg-warning border rounded p-3 text-center">
+      <div class="small">Clicks</div>
+      <div class="fs-4 fw-bold"><%= Number(stats.clicks || 0) %></div>
+      <div class="opacity-75" style="font-size:11px;">intent</div>
+    </div>
+  </div>
+</div>
+
+<div class="bg-white border rounded">
+  <div class="px-3 pt-3 fw-bold">Recipients <span class="text-muted small fw-normal">(showing first 200 by scheduled time)</span></div>
+  <table class="table table-sm align-middle mb-0">
+    <thead class="table-light">
+      <tr>
+        <th>Recipient</th>
+        <th>From persona</th>
+        <th>Status</th>
+        <th class="text-end">Clicks</th>
+        <th class="text-end">Scheduled</th>
+        <th class="text-end">Sent</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% recent.forEach(function(r){
+        var cls = 'bg-secondary';
+        if (r.status === 'sent') cls = 'bg-success';
+        else if (r.status === 'sending') cls = 'bg-warning text-dark';
+        else if (r.status === 'failed') cls = 'bg-danger';
+        else if (r.status === 'queued') cls = 'bg-light text-dark border';
+      %>
+        <tr>
+          <td>
+            <strong><%= [r.first_name, r.last_name].filter(Boolean).join(' ') || r.email || '—' %></strong>
+            <div class="text-muted small"><%= r.email %></div>
+          </td>
+          <td class="small"><%= r.persona_name || '—' %></td>
+          <td>
+            <span class="badge <%= cls %>"><%= r.status %></span>
+            <% if (r.error) { %>
+              <div class="text-danger small mt-1"><%= r.error %></div>
+            <% } %>
+          </td>
+          <td class="text-end <%= r.clicks > 0 ? 'fw-bold text-warning' : 'text-muted' %>"><%= r.clicks %></td>
+          <td class="text-end small text-muted"><%= r.scheduled_for ? new Date(r.scheduled_for).toLocaleString() : '—' %></td>
+          <td class="text-end small text-muted"><%= r.sent_at ? new Date(r.sent_at).toLocaleString() : '—' %></td>
+        </tr>
+      <% }) %>
+      <% if (!recent.length) { %>
+        <tr><td colspan="6" class="text-muted text-center py-4">No recipients on this campaign yet.</td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>

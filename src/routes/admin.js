@@ -2,6 +2,7 @@ import { query, tx } from '../db.js';
 import { requireAdmin, findUserById } from '../auth.js';
 import { grantCredits, grantTokens } from '../services/credits.js';
 import { sendOne, sendTransactional, sendTestToSelf } from '../services/email.js';
+import { enqueueCampaignSends } from '../services/queue.js';
 import { ingestPersons } from '../services/personImport.js';
 import { verifyMailbox, sendViaMailbox, clearTransport } from '../services/smtpSender.js';
 import { syncMailboxInbox, markMessageRead } from '../services/imapReader.js';
@@ -548,68 +549,205 @@ export default async function adminRoutes(app) {
     const { rows: tags } = await query(
       `SELECT tag, COUNT(*)::int AS n FROM lead_tags GROUP BY tag ORDER BY n DESC LIMIT 50`
     );
-    return reply.view('admin/send', { user: req.user, users, templates, tags });
+    const { rows: mailboxes } = await query(
+      `SELECT id, label, smtp_user, status FROM mailboxes WHERE status='active' ORDER BY label`
+    );
+    return reply.view('admin/send', {
+      user: req.user, users, templates, tags, mailboxes,
+      flashErr: req.query.err || null,
+      preserved: {
+        target_user_id: req.query.target_user_id || '',
+        template_id: req.query.template_id || '',
+        tag: req.query.tag || '',
+        campaign_name: req.query.campaign_name || '',
+      },
+    });
   });
 
+  // POST /admin/send — Pre-flight, enqueue, redirect to live campaign page.
+  // Three big behavior changes from the old route:
+  //   1. We never block the request on SMTP. Sends are queued with proper pacing
+  //      (sends-per-persona-per-day across active mailboxes) and the queue worker
+  //      drains them in the background.
+  //   2. Validation errors round-trip to the form with a visible message + the
+  //      admin's previous selections preserved, so they can fix and resubmit.
+  //   3. On success we redirect to /admin/campaigns/:id which shows live counters
+  //      (queued / sending / sent / failed / skipped) plus the pre-flight
+  //      breakdown of which leads were excluded and why.
   app.post('/admin/send', async (req, reply) => {
-    const targetUserId = Number(req.body.target_user_id);
-    const templateId = Number(req.body.template_id);
-    const tag = (req.body.tag || '').trim();
-    const name = (req.body.campaign_name || 'Admin send').slice(0, 200);
+    const targetUserId = Number(req.body.target_user_id) || null;
+    const templateId   = Number(req.body.template_id) || null;
+    const tag          = (req.body.tag || '').trim();
+    const name         = (req.body.campaign_name || 'Admin send').slice(0, 200);
     const useUserCredits = req.body.use_user_credits === 'on';
 
-    let leadIds = [];
+    function bounceBack(err) {
+      const params = new URLSearchParams({
+        err,
+        target_user_id: String(targetUserId || ''),
+        template_id: String(templateId || ''),
+        tag,
+        campaign_name: name,
+      });
+      return reply.redirect('/admin/send?' + params.toString());
+    }
+
+    if (!templateId)               return bounceBack('Pick a template before sending.');
+    if (!targetUserId && !tag)     return bounceBack('Pick a target user OR enter a tag — otherwise there is no audience.');
+
+    const { rows: tplCheck } = await query('SELECT id FROM email_templates WHERE id=$1', [templateId]);
+    if (!tplCheck.length) return bounceBack('That template no longer exists.');
+
+    // Pre-flight: count what matched, what we'd skip, and why. Same JOIN strategy
+    // as the actual lead lookup so the numbers reconcile exactly.
+    const params = [];
+    let baseFrom;
     if (tag) {
-      const params = [tag];
-      let join = '';
+      params.push(tag);
+      const tagIdx = params.length;
+      let userJoin = '';
       if (targetUserId) {
         params.push(targetUserId);
-        join = `JOIN lead_purchases lp ON lp.lead_id = l.id AND lp.user_id = $${params.length}`;
+        userJoin = `JOIN lead_purchases lp ON lp.lead_id = l.id AND lp.user_id = $${params.length}`;
       }
-      const { rows } = await query(
-        `SELECT DISTINCT l.id FROM leads l
-         JOIN lead_tags lt ON lt.lead_id = l.id
-         ${join}
-         WHERE lt.tag = $1 AND l.dnc = FALSE AND l.email IS NOT NULL LIMIT 5000`,
-        params
-      );
-      leadIds = rows.map((r) => r.id);
-    } else if (targetUserId) {
-      const { rows } = await query(
-        `SELECT lp.lead_id AS id FROM lead_purchases lp
-         JOIN leads l ON l.id = lp.lead_id
-         WHERE lp.user_id = $1 AND l.dnc = FALSE AND l.email IS NOT NULL`,
-        [targetUserId]
-      );
-      leadIds = rows.map((r) => r.id);
+      baseFrom = `FROM leads l JOIN lead_tags lt ON lt.lead_id = l.id ${userJoin} WHERE lt.tag = $${tagIdx}`;
+    } else {
+      params.push(targetUserId);
+      baseFrom = `FROM leads l JOIN lead_purchases lp ON lp.lead_id = l.id AND lp.user_id = $${params.length}`;
+    }
+    const { rows: pre } = await query(
+      `SELECT
+         COUNT(*)::int                                                          AS matched,
+         SUM((l.email IS NULL)::int)::int                                        AS no_email,
+         SUM((l.dnc)::int)::int                                                  AS dnc,
+         SUM((LOWER(l.email) IN (SELECT email FROM suppressions))::int)::int     AS suppressed,
+         COUNT(*) FILTER (WHERE l.email IS NOT NULL AND NOT l.dnc
+                            AND LOWER(l.email) NOT IN (SELECT email FROM suppressions))::int AS deliverable
+         ${baseFrom}`,
+      params
+    );
+    const counts = pre[0] || { matched: 0, no_email: 0, dnc: 0, suppressed: 0, deliverable: 0 };
+
+    if (counts.matched === 0) return bounceBack('No leads matched those filters. Check the tag or pick a different user.');
+    if (counts.deliverable === 0) {
+      return bounceBack(`Matched ${counts.matched} lead(s), but every one was excluded (no email / DNC / suppressed). Nothing to send.`);
     }
 
-    if (!templateId || !leadIds.length) {
-      return reply.redirect('/admin/send?error=missing');
+    const { rows: leadRows } = await query(
+      `SELECT DISTINCT l.id ${baseFrom}
+         AND l.email IS NOT NULL AND NOT l.dnc
+         AND LOWER(l.email) NOT IN (SELECT email FROM suppressions)
+         LIMIT 5000`,
+      params
+    );
+    const leadIds = leadRows.map((r) => r.id);
+
+    const { rows: activeMb } = await query(
+      `SELECT id, persona_id FROM mailboxes WHERE status='active' ORDER BY id`
+    );
+    if (!activeMb.length) {
+      return bounceBack('No active mailboxes — provision at least one in Mailboxes before sending.');
     }
 
-    // The admin "sends as" — campaign is owned by the admin or the target user.
     const senderUserId = useUserCredits && targetUserId ? targetUserId : req.user.id;
-
     const { rows: cam } = await query(
-      `INSERT INTO campaigns (user_id, template_id, name, status)
-       VALUES ($1, $2, $3, 'sending') RETURNING id`,
+      `INSERT INTO campaigns (user_id, template_id, name, status, sends_per_persona_per_day, send_window_start_hour, send_window_end_hour)
+       VALUES ($1, $2, $3, 'sending', 50, 9, 18) RETURNING *`,
       [senderUserId, templateId, name]
     );
-    const campaignId = cam[0].id;
+    const campaign = cam[0];
 
-    let sent = 0, failed = 0;
-    for (const leadId of leadIds) {
-      try {
-        await sendOne({ userId: senderUserId, campaignId, leadId, templateId });
-        sent++;
-      } catch (err) {
-        req.log.warn({ err, leadId }, 'admin send failed');
-        failed++;
-      }
+    try {
+      await enqueueCampaignSends({ campaign, leadIds, mailboxes: activeMb, userId: senderUserId });
+    } catch (err) {
+      req.log.error({ err }, 'enqueue failed');
+      await query(`UPDATE campaigns SET status='draft' WHERE id=$1`, [campaign.id]);
+      return bounceBack(`Could not queue: ${err.message || err}`);
     }
-    await query(`UPDATE campaigns SET status='sent' WHERE id=$1`, [campaignId]);
-    return reply.redirect(`/admin/reports?sent=${sent}&failed=${failed}`);
+
+    const preflight = {
+      matched: counts.matched, queued: leadIds.length,
+      no_email: counts.no_email || 0, dnc: counts.dnc || 0,
+      suppressed: counts.suppressed || 0,
+      mailboxes: activeMb.length,
+    };
+    const enc = encodeURIComponent(JSON.stringify(preflight));
+    return reply.redirect(`/admin/campaigns/${campaign.id}?preflight=${enc}`);
+  });
+
+  // ==========================================================================
+  // Campaign status — live view of an enqueued send. Auto-refreshes every 5s
+  // while there are queued/sending rows so admins watch progress in real time.
+  // ==========================================================================
+
+  app.get('/admin/campaigns/:id', async (req, reply) => {
+    const id = Number(req.params.id);
+    if (!id) return reply.code(404).send('Not found');
+    const { rows: cRows } = await query(
+      `SELECT c.*, t.name AS template_name, t.subject AS template_subject,
+              u.email AS owner_email
+         FROM campaigns c
+         LEFT JOIN email_templates t ON t.id = c.template_id
+         LEFT JOIN users u ON u.id = c.user_id
+        WHERE c.id = $1`,
+      [id]
+    );
+    const campaign = cRows[0];
+    if (!campaign) return reply.code(404).send('Campaign not found');
+
+    const { rows: stats } = await query(
+      `SELECT
+         COUNT(*)                                          AS total,
+         COUNT(*) FILTER (WHERE status='queued')           AS queued,
+         COUNT(*) FILTER (WHERE status='sending')          AS sending,
+         COUNT(*) FILTER (WHERE status='sent')             AS sent,
+         COUNT(*) FILTER (WHERE status='failed')           AS failed,
+         COUNT(*) FILTER (WHERE status='skipped')          AS skipped,
+         COUNT(*) FILTER (WHERE status='suppressed')       AS suppressed,
+         MIN(scheduled_for) FILTER (WHERE status='queued') AS next_send_at,
+         MAX(scheduled_for) FILTER (WHERE status='queued') AS last_send_at,
+         MIN(sent_at)                                      AS first_sent_at,
+         MAX(sent_at)                                      AS last_sent_at,
+         (SELECT COUNT(*)::int FROM click_events ce JOIN sends s ON s.id = ce.send_id WHERE s.campaign_id = $1) AS clicks
+         FROM sends WHERE campaign_id = $1`,
+      [id]
+    );
+    const s = stats[0] || {};
+    const pending = Number(s.queued || 0) + Number(s.sending || 0);
+
+    const { rows: recent } = await query(
+      `SELECT s.id, s.status, s.scheduled_for, s.sent_at, s.error,
+              l.email, l.first_name, l.last_name,
+              p.display_name AS persona_name,
+              (SELECT COUNT(*)::int FROM click_events ce WHERE ce.send_id = s.id) AS clicks
+         FROM sends s
+         LEFT JOIN leads l ON l.id = s.lead_id
+         LEFT JOIN personas p ON p.id = s.persona_id
+        WHERE s.campaign_id = $1
+        ORDER BY s.scheduled_for ASC NULLS LAST, s.id ASC
+        LIMIT 200`,
+      [id]
+    );
+
+    let preflight = null;
+    if (req.query.preflight) {
+      try { preflight = JSON.parse(decodeURIComponent(req.query.preflight)); } catch (_) {}
+    }
+
+    return reply.view('admin/campaign_detail', {
+      user: req.user, campaign, stats: s, recent, preflight, pending,
+    });
+  });
+
+  app.post('/admin/campaigns/:id/pause', async (req, reply) => {
+    const id = Number(req.params.id);
+    await query(`UPDATE campaigns SET status='paused' WHERE id=$1 AND status IN ('sending','scheduled')`, [id]);
+    return reply.redirect(`/admin/campaigns/${id}`);
+  });
+  app.post('/admin/campaigns/:id/resume', async (req, reply) => {
+    const id = Number(req.params.id);
+    await query(`UPDATE campaigns SET status='sending' WHERE id=$1 AND status='paused'`, [id]);
+    return reply.redirect(`/admin/campaigns/${id}`);
   });
 
   // ==========================================================================
