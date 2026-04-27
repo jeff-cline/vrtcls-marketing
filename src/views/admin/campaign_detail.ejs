@@ -28,17 +28,36 @@
   </div>
 </div>
 
+<%
+  function fmtCT(d) {
+    if (!d) return '';
+    return new Date(d).toLocaleString('en-US', { timeZone: 'America/Chicago', dateStyle: 'medium', timeStyle: 'short' }) + ' CT';
+  }
+  var nextMs = stats.next_send_at ? new Date(stats.next_send_at).getTime() - Date.now() : 0;
+  var minsToNext = Math.round(nextMs / 60000);
+%>
+
 <% if (pending > 0) { %>
   <div class="alert alert-info py-2 small">
     🔄 <strong>Live</strong> — auto-refreshing every 5 seconds while sends are in flight.
     <%= Number(stats.queued || 0) %> queued, <%= Number(stats.sending || 0) %> dispatching now.
     <% if (stats.next_send_at) { %>
-      Next send around <%= new Date(stats.next_send_at).toLocaleString() %>.
+      Next send <strong><%= minsToNext <= 1 ? 'in <1 min' : (minsToNext < 60 ? 'in ' + minsToNext + ' min' : 'around ' + fmtCT(stats.next_send_at)) %></strong>.
     <% } %>
-    <% if (stats.last_send_at) { %>
-      Last queued for <%= new Date(stats.last_send_at).toLocaleString() %>.
+    <% if (stats.last_send_at && Number(stats.queued) > 1) { %>
+      Last queued for <%= fmtCT(stats.last_send_at) %>.
     <% } %>
   </div>
+  <% if (preflight && preflight.immediate) { %>
+    <div class="alert alert-success py-2 small">
+      🚀 <strong>Send-immediately mode.</strong> All <%= preflight.queued %> sends are scheduled within the next minute. Worker drains every 30 seconds — first send should land in your inbox shortly.
+    </div>
+  <% } else if (minsToNext > 60) { %>
+    <div class="alert alert-warning py-2 small">
+      ⏱ <strong>Paced send.</strong> First dispatch isn't for <%= Math.round(minsToNext/60) %>h — pacing window is 9am–6pm Central.
+      Want them out faster? <a href="/admin/send" class="alert-link">Re-send with "Send immediately"</a>.
+    </div>
+  <% } %>
 <% } else if (campaign.status === 'sent') { %>
   <div class="alert alert-success py-2 small">
     ✅ <strong>All sends resolved.</strong>
@@ -153,8 +172,8 @@
             <% } %>
           </td>
           <td class="text-end <%= r.clicks > 0 ? 'fw-bold text-warning' : 'text-muted' %>"><%= r.clicks %></td>
-          <td class="text-end small text-muted"><%= r.scheduled_for ? new Date(r.scheduled_for).toLocaleString() : '—' %></td>
-          <td class="text-end small text-muted"><%= r.sent_at ? new Date(r.sent_at).toLocaleString() : '—' %></td>
+          <td class="text-end small text-muted"><%= r.scheduled_for ? fmtCT(r.scheduled_for) : '—' %></td>
+          <td class="text-end small text-muted"><%= r.sent_at ? fmtCT(r.sent_at) : '—' %></td>
         </tr>
       <% }) %>
       <% if (!recent.length) { %>

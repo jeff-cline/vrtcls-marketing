@@ -1,7 +1,8 @@
 <h1 class="fw-bold mb-1">Admin send</h1>
 <p class="text-secondary">
   Send to a specific user's leads, or to every lead carrying a tag (across the database).
-  One token per send. Sends are paced through every active mailbox at 50/persona/day in the 9am–6pm window.
+  One token per send. Default behavior is <strong>send-now for ≤25 leads</strong>; larger audiences pace at 50/persona/day in the
+  9am–6pm Central window.
 </p>
 
 <% if (flashErr) { %>
@@ -63,6 +64,36 @@
         <label class="form-check-label" for="use_user_credits">Charge tokens to selected user (otherwise charge admin)</label>
       </div>
     </div>
+
+    <div class="col-12">
+      <label class="form-label fw-bold mb-1">Pacing</label>
+      <div class="d-flex flex-wrap gap-3">
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="pacing" id="pacing-auto"
+                 value="auto" <%= (preserved.pacing || 'auto') === 'auto' ? 'checked' : '' %>>
+          <label class="form-check-label" for="pacing-auto">
+            <strong>Auto</strong> — send now if ≤25 leads, otherwise pace
+          </label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="pacing" id="pacing-force"
+                 value="force" <%= preserved.pacing === 'force' ? 'checked' : '' %>>
+          <label class="form-check-label" for="pacing-force">
+            <strong>Send immediately</strong> — fire all of them in the next minute
+          </label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="pacing" id="pacing-paced"
+                 value="paced" <%= preserved.pacing === 'paced' ? 'checked' : '' %>>
+          <label class="form-check-label" for="pacing-paced">
+            <strong>Paced</strong> — spread across 9am–6pm Central, 50/persona/day
+          </label>
+        </div>
+      </div>
+      <div class="form-text">
+        Test sends usually want <strong>Send immediately</strong>. Big tag-blasts want <strong>Paced</strong> so you don't tank inbox reputation.
+      </div>
+    </div>
   </div>
   <div class="mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
     <div class="text-muted small">
@@ -80,7 +111,7 @@
       <ol class="ps-3 mb-0">
         <li><strong>Pre-flight</strong> the audience — count matched, drop no-email / DNC / suppressed.</li>
         <li><strong>Open a campaign</strong> with status <code>sending</code>.</li>
-        <li><strong>Round-robin enqueue</strong> across <%= mailboxes.length %> active mailbox<%= mailboxes.length === 1 ? '' : 'es' %> at 50/persona/day, paced 9am–6pm.</li>
+        <li><strong>Round-robin enqueue</strong> across <%= mailboxes.length %> active mailbox<%= mailboxes.length === 1 ? '' : 'es' %> — instant for ≤25 leads, otherwise paced 9am–6pm Central at 50/persona/day.</li>
         <li><strong>Worker drains</strong> queued sends every 30s. Each click writes <code>click_events</code> back to the customer.</li>
         <li><strong>Live page</strong> shows queued / sending / sent / failed and auto-refreshes.</li>
       </ol>

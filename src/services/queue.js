@@ -7,10 +7,18 @@ import { consumeToken } from './credits.js';
 
 const resend = config.email.resendKey ? new Resend(config.email.resendKey) : null;
 
+// Pacing window is interpreted in this timezone. Server is UTC in prod; without
+// this, "9-18" meant 4am-1pm Central and evening sends got punted to tomorrow.
+const SEND_TZ = process.env.SEND_TZ || 'America/Chicago';
+
 // Round-robin across mailboxes, then spread within each mailbox's daily quota
 // across the sender-time window. Returns the array we wrote (so the UI can
 // preview projected timestamps before launch).
-export async function enqueueCampaignSends({ campaign, leadIds, mailboxes, userId }) {
+//
+// `immediate=true` bypasses pacing and fires everything within the next minute
+// (8s gaps + 4s jitter so SMTP doesn't choke). Used for test sends and small
+// admin pushes where pacing would feel broken.
+export async function enqueueCampaignSends({ campaign, leadIds, mailboxes, userId, immediate = false }) {
   if (mailboxes.length === 0) throw new Error('no mailboxes available');
   const buckets = mailboxes.map(() => []);
   leadIds.forEach((leadId, i) => {
@@ -21,12 +29,18 @@ export async function enqueueCampaignSends({ campaign, leadIds, mailboxes, userI
   for (let mi = 0; mi < mailboxes.length; mi++) {
     const mb = mailboxes[mi];
     const leads = buckets[mi];
-    const times = computeSendTimes({
-      n: leads.length,
-      perDay: campaign.sends_per_persona_per_day,
-      startHour: campaign.send_window_start_hour,
-      endHour: campaign.send_window_end_hour,
-    });
+    let times;
+    if (immediate) {
+      const start = Date.now();
+      times = leads.map((_, i) => new Date(start + i * 8_000 + Math.random() * 4_000));
+    } else {
+      times = computeSendTimes({
+        n: leads.length,
+        perDay: campaign.sends_per_persona_per_day,
+        startHour: campaign.send_window_start_hour,
+        endHour: campaign.send_window_end_hour,
+      });
+    }
     for (let li = 0; li < leads.length; li++) {
       rows.push({
         leadId: leads[li],
@@ -52,23 +66,49 @@ export async function enqueueCampaignSends({ campaign, leadIds, mailboxes, userI
   return rows;
 }
 
+// Returns the UTC Date corresponding to `hour:00:00` on the local-day-of refDate
+// in `tz`. Uses Intl to find the tz's UTC offset at that moment (handles DST).
+function zonedDateAtHour(refDate, tz, hour) {
+  const ymd = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(refDate); // "YYYY-MM-DD"
+  const [y, m, d] = ymd.split('-').map(Number);
+  const guess = new Date(Date.UTC(y, m - 1, d, hour, 0, 0));
+  const offsetMin = tzOffsetMinutes(guess, tz);
+  return new Date(guess.getTime() - offsetMin * 60_000);
+}
+
+// Minutes east of UTC for `tz` at the given moment (CDT = -300, CST = -360).
+function tzOffsetMinutes(date, tz) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(date).reduce((o, p) => { o[p.type] = p.value; return o; }, {});
+  const asIfUtc = Date.UTC(
+    +parts.year, +parts.month - 1, +parts.day,
+    +parts.hour % 24, +parts.minute, +parts.second
+  );
+  return (asIfUtc - date.getTime()) / 60_000;
+}
+
 function computeSendTimes({ n, perDay, startHour, endHour }) {
   const times = [];
   if (n === 0) return times;
   const now = new Date();
-  let cur = new Date(now);
-  // If we're before today's window, jump to it. If we're after, jump to tomorrow.
-  const todayStart = new Date(now); todayStart.setHours(startHour, 0, 0, 0);
-  const todayEnd   = new Date(now); todayEnd.setHours(endHour, 0, 0, 0);
-  if (now < todayStart) cur = new Date(todayStart);
-  else if (now >= todayEnd) {
-    cur = new Date(todayStart);
-    cur.setDate(cur.getDate() + 1);
+
+  // Today's window in SEND_TZ. If we're past today's end, advance to tomorrow.
+  let dayRef = new Date(now);
+  let dayStart = zonedDateAtHour(dayRef, SEND_TZ, startHour);
+  let dayEnd   = zonedDateAtHour(dayRef, SEND_TZ, endHour);
+  if (now >= dayEnd) {
+    dayRef = new Date(now.getTime() + 86_400_000);
+    dayStart = zonedDateAtHour(dayRef, SEND_TZ, startHour);
+    dayEnd   = zonedDateAtHour(dayRef, SEND_TZ, endHour);
   }
+  let cur = now > dayStart ? new Date(now) : new Date(dayStart);
 
   while (times.length < n) {
-    const dayStart = new Date(cur); dayStart.setHours(startHour, 0, 0, 0);
-    const dayEnd   = new Date(cur); dayEnd.setHours(endHour, 0, 0, 0);
     const winMs = dayEnd - dayStart;
     const intervalMs = winMs / perDay;
     let firstSlot = 0;
@@ -78,9 +118,10 @@ function computeSendTimes({ n, perDay, startHour, endHour }) {
       const jitter = (Math.random() - 0.5) * 180_000; // ±90s
       times.push(new Date(slotTime.getTime() + jitter));
     }
-    cur = new Date(cur);
-    cur.setDate(cur.getDate() + 1);
-    cur.setHours(startHour, 0, 0, 0);
+    dayRef = new Date(dayRef.getTime() + 86_400_000);
+    dayStart = zonedDateAtHour(dayRef, SEND_TZ, startHour);
+    dayEnd   = zonedDateAtHour(dayRef, SEND_TZ, endHour);
+    cur = new Date(dayStart);
   }
   return times.slice(0, n);
 }

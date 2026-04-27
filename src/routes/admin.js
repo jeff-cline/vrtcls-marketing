@@ -560,6 +560,7 @@ export default async function adminRoutes(app) {
         template_id: req.query.template_id || '',
         tag: req.query.tag || '',
         campaign_name: req.query.campaign_name || '',
+        pacing: req.query.pacing || 'auto',
       },
     });
   });
@@ -580,6 +581,9 @@ export default async function adminRoutes(app) {
     const tag          = (req.body.tag || '').trim();
     const name         = (req.body.campaign_name || 'Admin send').slice(0, 200);
     const useUserCredits = req.body.use_user_credits === 'on';
+    // Pacing toggle: 'auto' = bypass when audience is small, 'force' = always
+    // bypass, 'paced' = always pace through the daily window.
+    const pacing = (req.body.pacing || 'auto').toString();
 
     function bounceBack(err) {
       const params = new URLSearchParams({
@@ -588,6 +592,7 @@ export default async function adminRoutes(app) {
         template_id: String(templateId || ''),
         tag,
         campaign_name: name,
+        pacing,
       });
       return reply.redirect('/admin/send?' + params.toString());
     }
@@ -657,8 +662,11 @@ export default async function adminRoutes(app) {
     );
     const campaign = cam[0];
 
+    const immediate = pacing === 'force' || (pacing === 'auto' && leadIds.length <= 25);
     try {
-      await enqueueCampaignSends({ campaign, leadIds, mailboxes: activeMb, userId: senderUserId });
+      await enqueueCampaignSends({
+        campaign, leadIds, mailboxes: activeMb, userId: senderUserId, immediate,
+      });
     } catch (err) {
       req.log.error({ err }, 'enqueue failed');
       await query(`UPDATE campaigns SET status='draft' WHERE id=$1`, [campaign.id]);
@@ -670,6 +678,7 @@ export default async function adminRoutes(app) {
       no_email: counts.no_email || 0, dnc: counts.dnc || 0,
       suppressed: counts.suppressed || 0,
       mailboxes: activeMb.length,
+      immediate,
     };
     const enc = encodeURIComponent(JSON.stringify(preflight));
     return reply.redirect(`/admin/campaigns/${campaign.id}?preflight=${enc}`);
