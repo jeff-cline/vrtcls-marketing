@@ -64,4 +64,23 @@ export default async function trackingRoutes(app) {
     }
     return reply.view('public/unsubscribed', { user: null });
   });
+
+  // RFC 8058 one-click POST handler. Mailbox providers (Gmail, Yahoo) hit this
+  // when the recipient clicks the inbox-level "Unsubscribe" link — the body is
+  // List-Unsubscribe=One-Click. We must accept it without confirmation and
+  // return 200, otherwise providers count it against our reputation.
+  app.post('/u/:sendId', async (req, reply) => {
+    const sendId = Number(req.params.sendId);
+    if (sendId) {
+      try {
+        await query(
+          `UPDATE leads SET dnc = TRUE
+           WHERE id = (SELECT lead_id FROM sends WHERE id = $1)`,
+          [sendId]
+        );
+      } catch (_) {}
+    }
+    reply.header('Content-Type', 'text/plain');
+    return reply.send('OK');
+  });
 }

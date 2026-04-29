@@ -1,3 +1,4 @@
+<script src="/static/js/spam-lint.js"></script>
 <h1 class="fw-bold mb-3">My templates</h1>
 <p class="text-secondary">Edit subject + HTML for the templates you own. Fork any global library template into a private editable copy. Send a test to yourself before composing a real campaign.</p>
 <p class="small text-muted">
@@ -26,6 +27,7 @@
         <label class="form-label">Subject</label>
         <input name="subject" class="form-control" value="<%= t.subject %>" required>
       </div>
+      <div class="border rounded bg-light p-2 mb-2" data-spam-panel="user-<%= t.id %>"></div>
       <div class="mb-2">
         <label class="form-label">HTML body</label>
         <textarea name="body_html" class="form-control font-monospace" rows="12"><%= t.body_html %></textarea>

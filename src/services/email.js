@@ -1,7 +1,7 @@
 import { Resend } from 'resend';
 import { config } from '../config.js';
 import { query, tx } from '../db.js';
-import { substitute, rewriteLinks, injectPixel, canSpamFooter } from './templates.js';
+import { substitute, rewriteLinks, injectPixel, canSpamFooter, htmlToText } from './templates.js';
 import { consumeToken } from './credits.js';
 import { pickMailbox, isMailboxAvailable, sendViaMailbox } from './smtpSender.js';
 
@@ -68,12 +68,25 @@ export async function renderEmail({ template, lead, sendId, persona, sampleMode 
   // The only difference is link/pixel rewriting is skipped so test recipients
   // don't pollute open/click metrics.
   if (sampleMode) {
-    return { subject, html };
+    return { subject, html, text: htmlToText(html) };
   }
 
   html = rewriteLinks(html, { sendId, baseUrl: config.baseUrl });
   html = injectPixel(html, { sendId, baseUrl: config.baseUrl });
-  return { subject, html };
+  return { subject, html, text: htmlToText(html) };
+}
+
+// RFC 2369 / RFC 8058 unsubscribe headers. Gmail/Yahoo bulk-sender rules
+// require these for inbox placement — the footer link alone is not enough.
+export function buildUnsubHeaders({ baseUrl, sendId, mailtoAddress }) {
+  const httpsUrl = `${baseUrl}/u/${sendId}`;
+  const headers = {
+    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+  };
+  headers['List-Unsubscribe'] = mailtoAddress
+    ? `<${httpsUrl}>, <mailto:${mailtoAddress}?subject=unsubscribe>`
+    : `<${httpsUrl}>`;
+  return headers;
 }
 
 async function isSuppressed(emailAddr) {
@@ -123,11 +136,16 @@ export async function sendOne({ userId, campaignId, leadId, templateId, mailboxI
     return rows[0];
   });
 
-  const { subject, html } = await renderEmail({
+  const { subject, html, text } = await renderEmail({
     template,
     lead,
     sendId: sendRow.id,
     persona: mailbox ? { display_name: mailbox.persona_name, signature_html: mailbox.persona_signature } : null,
+  });
+  const unsubHeaders = buildUnsubHeaders({
+    baseUrl: config.baseUrl,
+    sendId: sendRow.id,
+    mailtoAddress: mailbox?.smtp_user || config.email.fromAddress,
   });
 
   // SMTP path — preferred when a mailbox is configured.
@@ -138,6 +156,8 @@ export async function sendOne({ userId, campaignId, leadId, templateId, mailboxI
         to: lead.email,
         subject,
         html,
+        text,
+        headers: unsubHeaders,
       });
       await query(
         `UPDATE sends SET status='sent', sent_at=NOW(), provider_id=$1 WHERE id=$2`,
@@ -169,6 +189,8 @@ export async function sendOne({ userId, campaignId, leadId, templateId, mailboxI
       reply_to: config.email.replyTo,
       subject,
       html,
+      text,
+      headers: unsubHeaders,
     });
     await query(
       `UPDATE sends SET status='sent', sent_at=NOW(), provider_id=$1 WHERE id=$2`,
@@ -201,16 +223,21 @@ export async function sendTestToSelf({ userId, templateId, mailboxId, recipient 
     ? await pickMailbox({ mailboxId })
     : await pickMailbox({ userId });
 
-  const { subject, html } = await renderEmail({
+  const { subject, html, text } = await renderEmail({
     template,
     lead: fakeLead,
     sendId: 0,
     persona: mailbox ? { display_name: mailbox.persona_name, signature_html: mailbox.persona_signature } : null,
     sampleMode: true,
   });
+  const unsubHeaders = buildUnsubHeaders({
+    baseUrl: config.baseUrl,
+    sendId: 'preview',
+    mailtoAddress: mailbox?.smtp_user || config.email.fromAddress,
+  });
 
   if (mailbox) {
-    return await sendViaMailbox({ mailbox, to: recipient, subject, html });
+    return await sendViaMailbox({ mailbox, to: recipient, subject, html, text, headers: unsubHeaders });
   }
   if (!resend) {
     console.log(`[email:dev] test send "${subject}" to ${recipient}`);
@@ -222,6 +249,8 @@ export async function sendTestToSelf({ userId, templateId, mailboxId, recipient 
     reply_to: config.email.replyTo,
     subject,
     html,
+    text,
+    headers: unsubHeaders,
   });
   return { id: resp.data?.id || null };
 }
